@@ -1,5 +1,3 @@
-import { User } from '@supabase/supabase-js';
-
 export type Role = 'admin' | 'teacher' | 'student';
 
 export interface Profile {
@@ -9,8 +7,14 @@ export interface Profile {
   role: Role;
 }
 
-// Type สำหรับข้อมูลที่รวมโปรไฟล์และอีเมลเพื่อใช้ในหน้า Admin
+export interface Subject {
+  id: string;
+  name: string;
+}
+
 export interface ManagedUser extends Profile {
   email: string;
-  banned_until?: string; // เพิ่มสถานะการแบน
+  banned_until?: string;
+  subject_id?: string | null; 
+  subject_name?: string | null; 
 }
