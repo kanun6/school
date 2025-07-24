@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Calendar, GraduationCap, MessageSquareWarning, User, LogOut } from 'lucide-react';
+import { Calendar, GraduationCap, MessageSquareWarning, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
+import UserProfile from './UserProfile'; // Import the new component
 
 const navItems = [
   { href: '/student/schedule', label: 'ตารางเรียน', icon: Calendar },
@@ -26,12 +27,7 @@ export default function StudentSidebar() {
     <aside className="w-64 flex-shrink-0 border-r bg-gray-100 dark:bg-gray-900 h-screen sticky top-0">
       <div className="flex h-full flex-col">
         <div className="flex-1">
-          <div className="flex h-16 items-center border-b px-6 dark:border-gray-800">
-            <Link href="/student/schedule" className="flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
-              <User className="h-6 w-6 text-purple-600" />
-              <span className="">Student Portal</span>
-            </Link>
-          </div>
+          <UserProfile role="student" /> {/* <-- UPDATED: Use the UserProfile component */}
           <nav className="grid items-start px-4 text-sm font-medium mt-4">
             {navItems.map(({ href, label, icon: Icon }) => {
               const isActive = pathname.startsWith(href);
