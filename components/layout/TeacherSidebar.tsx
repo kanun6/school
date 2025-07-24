@@ -2,14 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Calendar, GraduationCap, BookOpen, School, LogOut, MessageSquareWarning } from 'lucide-react';
+import { Calendar, GraduationCap, School, LogOut, MessageSquareWarning } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 
 const navItems = [
   { href: '/teacher/schedule', label: 'ตารางสอน', icon: Calendar },
   { href: '/teacher/grades', label: 'บันทึกผลการเรียน', icon: GraduationCap },
-  { href: '/teacher/subjects', label: 'จัดการรายวิชา', icon: BookOpen },
   { href: '/teacher/report-issue', label: 'แจ้งปัญหา', icon: MessageSquareWarning },
 ];
 
