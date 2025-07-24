@@ -22,30 +22,28 @@ export default function ReportPage() {
     const [error, setError] = useState('');
 
     const fetchIssues = async () => {
-        // Don't set loading to true on refetch, to avoid UI flashing
         try {
             const res = await fetch('/api/issues');
             if (!res.ok) throw new Error("Failed to fetch issues");
             const data = await res.json();
             setIssues(data);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            if (err instanceof Error) setError(err.message);
+            else setError("An unknown error occurred");
         } finally {
-            setLoading(false); // Only set loading to false on the initial fetch
+            setLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchIssues(); // Initial fetch
+        setLoading(true);
+        fetchIssues();
 
         const supabase = createClient();
         const channel = supabase
             .channel('public:issues:admin')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'issues' },
-                (payload) => {
-                    console.log("Realtime update received for issues", payload);
-                    fetchIssues();
-                }
+                () => { fetchIssues(); }
             )
             .subscribe();
 
@@ -58,10 +56,9 @@ export default function ReportPage() {
         try {
             const res = await fetch('/api/issues', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ issueId, status }) });
             if (!res.ok) throw new Error("Failed to update status");
-            // Realtime will handle the UI update, but we can also fetch manually for immediate feedback
-            await fetchIssues();
-        } catch (err: any) {
-            alert(`Error: ${err.message}`);
+        } catch (err: unknown) {
+            if (err instanceof Error) alert(`Error: ${err.message}`);
+            else alert("An unknown error occurred");
         }
     };
 
@@ -74,15 +71,15 @@ export default function ReportPage() {
                 body: JSON.stringify({ issueId })
             });
             if (!res.ok) throw new Error("Failed to delete issue");
-            // Realtime will handle the UI update
-        } catch (err: any) {
-            alert(`Error: ${err.message}`);
+        } catch (err: unknown) {
+            if (err instanceof Error) alert(`Error: ${err.message}`);
+            else alert("An unknown error occurred");
         }
     };
 
     if (loading) return <p>Loading reports...</p>;
     if (error) return <p className="text-red-500">{error}</p>;
-
+    
     return (
         <div>
             <h1 className="text-3xl font-bold">ปัญหาที่ได้รับแจ้งทั้งหมด</h1>
