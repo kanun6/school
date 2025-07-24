@@ -12,9 +12,14 @@ export interface Subject {
   name: string;
 }
 
+export interface Class {
+    id: string;
+    name: string;
+}
+
 export interface ManagedUser extends Profile {
   email: string;
   banned_until?: string;
-  subject_id?: string | null; 
-  subject_name?: string | null; 
+  subject_id?: string | null;
+  class_id?: string | null; // ID ของห้องเรียนที่สังกัด
 }

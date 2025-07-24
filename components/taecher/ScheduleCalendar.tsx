@@ -3,14 +3,16 @@
 import { useState, useEffect } from 'react';
 import { DAYS_OF_WEEK, TIME_SLOTS } from '@/lib/constants';
 import ScheduleModal from './ScheduleModal';
+import { Trash2 } from 'lucide-react'; // Import icon
 
 interface ScheduleSlot {
   id: string;
   day_of_week: number;
   start_time: string;
+  class_id: string;
   class_name: string;
   subject_name: string;
-  is_own_class: boolean;
+  teacher_id: string;
 }
 
 interface ClassData {
@@ -18,33 +20,29 @@ interface ClassData {
   name: string;
 }
 
+interface ScheduleData {
+    mySchedule: ScheduleSlot[];
+    allSchedules: ScheduleSlot[];
+    allClasses: ClassData[];
+    mySubjectName: string;
+}
+
 export default function ScheduleCalendar() {
-  const [schedule, setSchedule] = useState<ScheduleSlot[]>([]);
-  const [classes, setClasses] = useState<ClassData[]>([]);
+  const [data, setData] = useState<ScheduleData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   const [modalOpen, setModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [selectedSlot, setSelectedSlot] = useState<{ day: number; time: string } | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<{ day: number; time: string; availableClasses: ClassData[] } | null>(null);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [scheduleRes, classesRes] = await Promise.all([
-        fetch('/api/teacher/schedule'),
-        fetch('/api/teacher/classes'),
-      ]);
-
-      if (!scheduleRes.ok || !classesRes.ok) {
-        throw new Error('Failed to fetch data');
-      }
-
-      const scheduleData = await scheduleRes.json();
-      const classesData = await classesRes.json();
-      
-      setSchedule(scheduleData.data || []);
-      setClasses(classesData.data || []);
+      const response = await fetch('/api/teacher/schedule-data');
+      if (!response.ok) throw new Error('Failed to fetch schedule data');
+      const scheduleData: ScheduleData = await response.json();
+      setData(scheduleData);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -57,7 +55,15 @@ export default function ScheduleCalendar() {
   }, []);
 
   const handleSlotClick = (day: number, time: string) => {
-    setSelectedSlot({ day, time });
+    if (!data) return;
+
+    const bookedClassIdsInSlot = data.allSchedules
+      .filter(s => s.day_of_week === day && s.start_time.startsWith(time))
+      .map(s => s.class_id);
+      
+    const availableClasses = data.allClasses.filter(c => !bookedClassIdsInSlot.includes(c.id));
+    
+    setSelectedSlot({ day, time, availableClasses });
     setModalOpen(true);
   };
 
@@ -81,7 +87,7 @@ export default function ScheduleCalendar() {
         throw new Error(errorData.error || 'ไม่สามารถจองคาบสอนได้');
       }
       
-      await fetchData(); // Refresh data after saving
+      await fetchData();
       setModalOpen(false);
       setSelectedSlot(null);
     } catch (err: any) {
@@ -95,9 +101,7 @@ export default function ScheduleCalendar() {
     if (!window.confirm('คุณแน่ใจหรือไม่ว่าต้องการยกเลิกคาบสอนนี้?')) return;
     
     try {
-      const response = await fetch(`/api/teacher/schedule?slotId=${slotId}`, {
-        method: 'DELETE',
-      });
+      const response = await fetch(`/api/teacher/schedule?slotId=${slotId}`, { method: 'DELETE' });
       if (!response.ok) throw new Error('ไม่สามารถยกเลิกคาบสอนได้');
       await fetchData();
     } catch (err: any) {
@@ -107,12 +111,13 @@ export default function ScheduleCalendar() {
 
   if (loading) return <p>Loading schedule...</p>;
   if (error) return <p className="text-red-500">Error: {error}</p>;
+  if (!data) return <p>No data available.</p>;
 
   return (
     <>
       {modalOpen && selectedSlot && (
         <ScheduleModal
-          availableClasses={classes} // Simplified: show all classes. A real app would filter available ones.
+          availableClasses={selectedSlot.availableClasses}
           day={selectedSlot.day}
           timeSlot={selectedSlot.time}
           onClose={() => setModalOpen(false)}
@@ -139,24 +144,26 @@ export default function ScheduleCalendar() {
             <div key={day.id} className="grid grid-rows-7 border-l dark:border-gray-700">
               {TIME_SLOTS.map(slot => {
                 if (slot.isLunch) {
-                  return <div key={slot.start} className="bg-gray-200 dark:bg-gray-700 col-span-1 flex items-center justify-center text-sm">พักกลางวัน</div>;
+                  return <div key={slot.start} className="bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-sm">พักกลางวัน</div>;
                 }
-                const scheduledSlot = schedule.find(s => s.day_of_week === day.id && s.start_time.startsWith(slot.start));
+                const myScheduledSlot = data.mySchedule.find(s => s.day_of_week === day.id && s.start_time.startsWith(slot.start));
                 return (
                   <div key={slot.start} className="border-b border-l dark:border-gray-700 p-2 text-center text-xs group relative">
-                    {scheduledSlot ? (
-                      <div className={`p-2 rounded-md h-full flex flex-col justify-center ${scheduledSlot.is_own_class ? 'bg-green-200 dark:bg-green-800' : 'bg-gray-200 dark:bg-gray-600'}`}>
-                        <p className="font-bold">{scheduledSlot.subject_name}</p>
-                        <p>{scheduledSlot.class_name}</p>
-                        {scheduledSlot.is_own_class && (
-                          <button onClick={() => handleDeleteSlot(scheduledSlot.id)} className="absolute top-1 right-1 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-xs">
-                            ยกเลิก
-                          </button>
-                        )}
+                    {myScheduledSlot ? (
+                      <div className="p-2 rounded-md h-full flex flex-col justify-center bg-green-200 dark:bg-green-800">
+                        <p className="font-bold">{myScheduledSlot.subject_name}</p>
+                        <p>{myScheduledSlot.class_name}</p>
+                        <button 
+                          onClick={() => handleDeleteSlot(myScheduledSlot.id)} 
+                          className="absolute top-1 right-1 p-1 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 hover:bg-red-700 transition-all duration-200"
+                          aria-label="Delete schedule slot"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
                       </div>
                     ) : (
                       <button onClick={() => handleSlotClick(day.id, slot.start)} className="w-full h-full text-gray-400 hover:bg-blue-100 dark:hover:bg-blue-900 rounded-md transition-colors">
-                        + จอง
+                        + เพิ่มรายวิชา
                       </button>
                     )}
                   </div>

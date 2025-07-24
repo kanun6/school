@@ -5,8 +5,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Next.js Supabase Role Auth",
-  description: "Role-based authentication",
+  title: "School-ONL",
+  description: "ระบบจัดการโรงเรียนออนไลน์",
 };
 
 export default function RootLayout({
@@ -15,7 +15,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full bg-gray-100">
+    <html lang="en" className="h-full bg-white dark:bg-gray-950">
       <body className={`${inter.className} h-full`} suppressHydrationWarning={true}>
         {children}
       </body>

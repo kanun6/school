@@ -3,10 +3,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
 async function isAdmin(request: Request): Promise<boolean> {
     const cookieStore = cookies();
@@ -25,15 +22,20 @@ export async function GET(request: Request) {
     if (usersError) throw usersError;
 
     const userIds = users.map(user => user.id);
-    const { data: profiles, error: profilesError } = await supabaseAdmin.from('profiles').select('*').in('id', userIds);
-    if (profilesError) throw profilesError;
-    
-    const { data: teacherSubjects, error: tsError } = await supabaseAdmin.from('teacher_subjects').select('*').in('teacher_id', userIds);
-    if(tsError) throw tsError;
+    const [profilesRes, teacherSubjectsRes, studentClassesRes] = await Promise.all([
+        supabaseAdmin.from('profiles').select('*').in('id', userIds),
+        supabaseAdmin.from('teacher_subjects').select('*').in('teacher_id', userIds),
+        supabaseAdmin.from('student_classes').select('*').in('student_id', userIds)
+    ]);
+
+    if (profilesRes.error) throw profilesRes.error;
+    if (teacherSubjectsRes.error) throw teacherSubjectsRes.error;
+    if (studentClassesRes.error) throw studentClassesRes.error;
 
     const managedUsers = users.map(user => {
-      const profile = profiles.find(p => p.id === user.id);
-      const assignment = teacherSubjects.find(ts => ts.teacher_id === user.id);
+      const profile = profilesRes.data.find(p => p.id === user.id);
+      const assignment = teacherSubjectsRes.data.find(ts => ts.teacher_id === user.id);
+      const classAssignment = studentClassesRes.data.find(sc => sc.student_id === user.id);
       return {
         id: user.id,
         first_name: profile?.first_name || '',
@@ -42,6 +44,7 @@ export async function GET(request: Request) {
         email: user.email || '',
         banned_until: user.banned_until,
         subject_id: assignment?.subject_id || null,
+        class_id: classAssignment?.class_id || null,
       };
     });
 
@@ -58,18 +61,26 @@ export async function PUT(request: Request) {
         const { userId, updates } = await request.json();
         if (!userId || !updates) return NextResponse.json({ error: 'User ID and updates are required.' }, { status: 400 });
 
-        // Handle subject assignment
         if (typeof updates.subject_id !== 'undefined') {
-            if (updates.subject_id) { // Assign or update
+            if (updates.subject_id) {
                 const { error } = await supabaseAdmin.from('teacher_subjects').upsert({ teacher_id: userId, subject_id: updates.subject_id });
                 if (error) throw new Error(`Failed to assign subject: ${error.message}`);
-            } else { // Unassign
+            } else {
                 const { error } = await supabaseAdmin.from('teacher_subjects').delete().eq('teacher_id', userId);
                  if (error) throw new Error(`Failed to unassign subject: ${error.message}`);
             }
         }
 
-        // Handle other updates (profile, auth)
+        if (typeof updates.class_id !== 'undefined') {
+            if (updates.class_id) {
+                const { error } = await supabaseAdmin.from('student_classes').upsert({ student_id: userId, class_id: updates.class_id });
+                if (error) throw new Error(`Failed to assign class: ${error.message}`);
+            } else {
+                const { error } = await supabaseAdmin.from('student_classes').delete().eq('student_id', userId);
+                 if (error) throw new Error(`Failed to unassign class: ${error.message}`);
+            }
+        }
+
         const profileUpdates: { [key: string]: any } = {};
         const authUpdates: { [key: string]: any } = {};
         if (updates.role) profileUpdates.role = updates.role;
@@ -87,19 +98,6 @@ export async function PUT(request: Request) {
         }
         
         return NextResponse.json({ message: 'User updated successfully.' });
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-}
-
-export async function DELETE(request: Request) {
-    if (!(await isAdmin(request))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    try {
-        const { userId } = await request.json();
-        if (!userId) return NextResponse.json({ error: 'User ID is required.' }, { status: 400 });
-        const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
-        if (error) throw error;
-        return NextResponse.json({ message: 'User deleted successfully.' });
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }

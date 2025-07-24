@@ -24,7 +24,7 @@ export default function EditUserModal({ user, onClose, onSave }: EditUserModalPr
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center">
       <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
-        <h2 className="text-xl font-bold mb-4">Edit User: {user.email}</h2>
+        <h2 className=" text-gray-700 text-xl font-bold mb-4">Edit User: {user.email}</h2>
         <div className="space-y-4">
           <div>
             <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">First Name</label>
@@ -33,7 +33,7 @@ export default function EditUserModal({ user, onClose, onSave }: EditUserModalPr
               id="firstName"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              className=" text-gray-700 mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
             />
           </div>
           <div>
@@ -43,7 +43,7 @@ export default function EditUserModal({ user, onClose, onSave }: EditUserModalPr
               id="lastName"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              className=" text-gray-700 mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
             />
           </div>
         </div>

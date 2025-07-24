@@ -29,7 +29,7 @@ export default function ScheduleModal({ availableClasses, day, timeSlot, onClose
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center">
       <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-sm">
-        <h2 className="text-xl font-bold mb-2">จองคาบสอน</h2>
+        <h2 className="text-xl font-bold mb-2">เพิ่มคาบสอน</h2>
         <p className="text-gray-600 dark:text-gray-400 mb-4">
           เวลา {timeSlot} วัน{DAYS_OF_WEEK.find(d => d.id === day)?.name}
         </p>
@@ -37,7 +37,7 @@ export default function ScheduleModal({ availableClasses, day, timeSlot, onClose
         {availableClasses.length > 0 ? (
           <div className="space-y-4">
             <div>
-              <label htmlFor="classSelect" className="block text-sm font-medium text-gray-700 dark:text-gray-300">เลือกห้องเรียน</label>
+              <label htmlFor="classSelect" className="block text-sm font-medium text-gray-700 dark:text-gray-300">เลือกห้องเรียนที่ว่าง</label>
               <select
                 id="classSelect"
                 value={selectedClass}
@@ -51,7 +51,7 @@ export default function ScheduleModal({ availableClasses, day, timeSlot, onClose
             </div>
           </div>
         ) : (
-          <p className="text-yellow-500">ไม่มีห้องเรียนว่างสำหรับช่วงเวลานี้</p>
+          <p className="text-yellow-500 font-semibold">ไม่มีห้องเรียนว่างสำหรับช่วงเวลานี้</p>
         )}
 
         <div className="mt-6 flex justify-end space-x-3">
