@@ -2,14 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Calendar, User, LogOut } from 'lucide-react'; // Simplified imports
+import { Calendar, GraduationCap, MessageSquareWarning, User, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 
 const navItems = [
   { href: '/student/schedule', label: 'ตารางเรียน', icon: Calendar },
-  // { href: '/student/grades', label: 'ดูคะแนน', icon: GraduationCap },
-  // { href: '/student/report-issue', label: 'แจ้งปัญหา', icon: MessageSquareWarning },
+  { href: '/student/grades', label: 'ดูคะแนน', icon: GraduationCap },
+  { href: '/student/report-issue', label: 'แจ้งปัญหา', icon: MessageSquareWarning },
 ];
 
 export default function StudentSidebar() {
@@ -36,14 +36,7 @@ export default function StudentSidebar() {
             {navItems.map(({ href, label, icon: Icon }) => {
               const isActive = pathname.startsWith(href);
               return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2 text-gray-600 dark:text-gray-400 transition-all hover:text-gray-900 dark:hover:text-gray-50',
-                    isActive && 'bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-50'
-                  )}
-                >
+                <Link key={href} href={href} className={cn('flex items-center gap-3 rounded-lg px-3 py-2 text-gray-600 dark:text-gray-400 transition-all hover:text-gray-900 dark:hover:text-gray-50', isActive && 'bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-50')}>
                   <Icon className="h-4 w-4" />
                   {label}
                 </Link>
@@ -52,10 +45,7 @@ export default function StudentSidebar() {
           </nav>
         </div>
         <div className="mt-auto p-4 border-t dark:border-gray-800">
-          <button
-            onClick={handleSignOut}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-gray-600 dark:text-gray-400 transition-all hover:bg-gray-200 hover:text-gray-900 dark:hover:bg-gray-800 dark:hover:text-gray-50"
-          >
+          <button onClick={handleSignOut} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-gray-600 dark:text-gray-400 transition-all hover:bg-gray-200 hover:text-gray-900 dark:hover:bg-gray-800 dark:hover:text-gray-50">
             <LogOut className="h-4 w-4" />
             Sign Out
           </button>
