@@ -1,21 +1,19 @@
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
-async function isAdmin(request: Request): Promise<boolean> {
-    const cookieStore = cookies();
-    const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { cookies: { get: (name) => cookieStore.get(name)?.value } });
+async function isAdmin(): Promise<boolean> {
+    const supabase = createSupabaseServerClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
     return profile?.role === 'admin';
 }
 
-export async function GET(request: Request) {
-  if (!(await isAdmin(request))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+export async function GET() {
+  if (!(await isAdmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   try {
     const { data: { users }, error: usersError } = await supabaseAdmin.auth.admin.listUsers();
@@ -49,13 +47,14 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json(managedUsers);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
 export async function PUT(request: Request) {
-    if (!(await isAdmin(request))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (!(await isAdmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     try {
         const { userId, updates } = await request.json();
@@ -81,8 +80,8 @@ export async function PUT(request: Request) {
             }
         }
 
-        const profileUpdates: { [key: string]: any } = {};
-        const authUpdates: { [key: string]: any } = {};
+        const profileUpdates: { [key: string]: unknown } = {};
+        const authUpdates: { [key: string]: unknown } = {};
         if (updates.role) profileUpdates.role = updates.role;
         if (updates.first_name) profileUpdates.first_name = updates.first_name;
         if (updates.last_name) profileUpdates.last_name = updates.last_name;
@@ -98,7 +97,22 @@ export async function PUT(request: Request) {
         }
         
         return NextResponse.json({ message: 'User updated successfully.' });
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+        return NextResponse.json({ error: errorMessage }, { status: 500 });
+    }
+}
+
+export async function DELETE(request: Request) {
+    if (!(await isAdmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    try {
+        const { userId } = await request.json();
+        if (!userId) return NextResponse.json({ error: 'User ID is required.' }, { status: 400 });
+        const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+        if (error) throw error;
+        return NextResponse.json({ message: 'User deleted successfully.' });
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+        return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 }

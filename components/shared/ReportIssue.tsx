@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { Issue, IssueCategory } from '@/lib/types';
-import { AlertCircle, CheckCircle, FileText, Tag, Type, Send } from 'lucide-react';
+import { FileText, Tag, Type, Send } from 'lucide-react';
+import { useModal } from '@/contexts/ModalContext'; // Import useModal
 
 const StatusBadge = ({ status }: { status: string }) => {
     const colorClasses = {
@@ -18,9 +19,8 @@ export default function ReportIssue() {
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [category, setCategory] = useState<IssueCategory>('อื่นๆ');
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
     const [loading, setLoading] = useState(false);
+    const { showAlert } = useModal(); // Use the modal
 
     const fetchMyIssues = async () => {
         const res = await fetch('/api/issues');
@@ -37,8 +37,6 @@ export default function ReportIssue() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        setError('');
-        setSuccess('');
 
         const res = await fetch('/api/issues', {
             method: 'POST',
@@ -47,14 +45,14 @@ export default function ReportIssue() {
         });
 
         if (res.ok) {
-            setSuccess('แจ้งปัญหาสำเร็จแล้ว');
+            await showAlert({ title: 'สำเร็จ', message: 'แจ้งปัญหาของคุณเรียบร้อยแล้ว' });
             setTitle('');
             setDescription('');
             setCategory('อื่นๆ');
             await fetchMyIssues();
         } else {
             const data = await res.json();
-            setError(data.error || 'เกิดข้อผิดพลาดในการแจ้งปัญหา');
+            await showAlert({ title: 'เกิดข้อผิดพลาด', message: data.error || 'ไม่สามารถส่งเรื่องได้', type: 'alert' });
         }
         setLoading(false);
     };
@@ -70,9 +68,6 @@ export default function ReportIssue() {
             
             <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md space-y-6">
                 <h2 className="text-xl font-semibold border-b dark:border-gray-700 pb-3">กรอกรายละเอียด</h2>
-                
-                {error && <div className="flex items-center p-3 text-sm text-red-700 bg-red-100 rounded-lg dark:bg-red-200 dark:text-red-800" role="alert"><AlertCircle className="w-5 h-5 mr-2" />{error}</div>}
-                {success && <div className="flex items-center p-3 text-sm text-green-700 bg-green-100 rounded-lg dark:bg-green-200 dark:text-green-800" role="alert"><CheckCircle className="w-5 h-5 mr-2" />{success}</div>}
                 
                 <div>
                     <label htmlFor="title" className="block text-sm font-medium mb-1">หัวข้อปัญหา</label>
