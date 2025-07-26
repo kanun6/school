@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { calculateGrade } from '@/lib/utils';
-import { useModal } from '@/contexts/ModalContext'; // Import useModal
+import { useModal } from '@/contexts/ModalContext';
 
 interface ClassData { id: string; name: string; }
 interface StudentData { id: string; first_name: string; last_name: string; score: number | null; }
@@ -15,9 +15,30 @@ export default function GradeManagement() {
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
-    const { showAlert } = useModal(); // Use the modal
+    const { showAlert } = useModal();
 
-    // Fetch classes the teacher teaches
+    const fetchStudents = useCallback(async (classId: string) => {
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`/api/teacher/grades?classId=${classId}`);
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.error || 'Failed to fetch students');
+            }
+            const data = await res.json();
+            setStudents(data.students);
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'An unknown error occurred';
+            setError(message);
+            await showAlert({ title: 'เกิดข้อผิดพลาด', message, type: 'alert' });
+            setStudents([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [showAlert]);
+
+    // Fetch classes the teacher teaches ONCE on mount
     useEffect(() => {
         const fetchClasses = async () => {
             try {
@@ -27,51 +48,32 @@ export default function GradeManagement() {
                 setClasses(data.classes);
                 setSubjectName(data.subjectName);
                 if (data.classes.length > 0) {
+                    // Set the initial class. This will only run once.
                     setSelectedClass(data.classes[0].id);
+                } else {
+                    setLoading(false);
                 }
             } catch (err: unknown) {
                 const message = err instanceof Error ? err.message : 'An unknown error occurred';
                 setError(message);
-                showAlert({ title: 'เกิดข้อผิดพลาด', message, type: 'alert' });
-            }
-        };
-        fetchClasses();
-    }, [showAlert]);
-
-    // Fetch students when a class is selected
-    useEffect(() => {
-        if (!selectedClass) {
-            setLoading(false);
-            return;
-        };
-
-        const fetchStudents = async () => {
-            setLoading(true);
-            setError('');
-            try {
-                const res = await fetch(`/api/teacher/grades?classId=${selectedClass}`);
-                if (!res.ok) {
-                    const errorData = await res.json();
-                    throw new Error(errorData.error || 'Failed to fetch students');
-                }
-                const data = await res.json();
-                setStudents(data.students);
-            } catch (err: unknown) {
-                const message = err instanceof Error ? err.message : 'An unknown error occurred';
-                setError(message);
-                showAlert({ title: 'เกิดข้อผิดพลาด', message, type: 'alert' });
-                setStudents([]);
-            } finally {
+                await showAlert({ title: 'เกิดข้อผิดพลาด', message, type: 'alert' });
                 setLoading(false);
             }
         };
-        fetchStudents();
-    }, [selectedClass, showAlert]);
+        fetchClasses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Use an empty dependency array to ensure this runs only once.
+
+    // Fetch students when a class is selected
+    useEffect(() => {
+        if (selectedClass) {
+            fetchStudents(selectedClass);
+        }
+    }, [selectedClass, fetchStudents]);
 
     const handleScoreChange = (studentId: string, score: string) => {
         const newScore = score === '' ? null : parseInt(score, 10);
         if (newScore !== null && (isNaN(newScore) || newScore < 0 || newScore > 100)) return;
-
         setStudents(prev =>
             prev.map(student =>
                 student.id === studentId ? { ...student, score: newScore } : student
@@ -98,11 +100,14 @@ export default function GradeManagement() {
                const errorData = await res.json();
                throw new Error(errorData.error || 'Failed to save grades');
             }
-            showAlert({ title: 'สำเร็จ', message: 'บันทึกคะแนนเรียบร้อยแล้ว' });
+            await showAlert({ title: 'สำเร็จ', message: 'บันทึกคะแนนเรียบร้อยแล้ว' });
+            // After saving, just refresh the student data for the CURRENT class.
+            // The dropdown selection will remain unchanged.
+            await fetchStudents(selectedClass); 
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : 'An unknown error occurred';
             setError(message);
-            showAlert({ title: 'เกิดข้อผิดพลาด', message, type: 'alert' });
+            await showAlert({ title: 'เกิดข้อผิดพลาด', message, type: 'alert' });
         } finally {
             setIsSaving(false);
         }

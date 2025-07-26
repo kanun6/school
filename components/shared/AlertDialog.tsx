@@ -31,7 +31,6 @@ export default function AlertDialog({
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
       <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md transform transition-all animate-in fade-in-0 zoom-in-95">
         
-        {/* UPDATED: Close Button */}
         <button
           onClick={onClose}
           className="absolute top-3 right-3 p-1 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"

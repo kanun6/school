@@ -1,10 +1,10 @@
 'use client';
 
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode, useCallback, useMemo } from 'react';
 import AlertDialog, { AlertDialogProps } from '@/components/shared/AlertDialog';
 
 type ModalContextType = {
-  showAlert: (props: Omit<AlertDialogProps, 'isOpen' | 'onClose'>) => void;
+  showAlert: (props: Omit<AlertDialogProps, 'isOpen' | 'onClose'>) => Promise<void>;
   showConfirm: (props: Omit<AlertDialogProps, 'isOpen' | 'onClose' | 'type'>) => Promise<boolean>;
 };
 
@@ -21,11 +21,17 @@ export const useModal = () => {
 export const ModalProvider = ({ children }: { children: ReactNode }) => {
   const [modalState, setModalState] = useState<AlertDialogProps | null>(null);
 
-  const showAlert = (props: Omit<AlertDialogProps, 'isOpen' | 'onClose'>) => {
-    setModalState({ ...props, isOpen: true, onClose: () => setModalState(null) });
-  };
+  const showAlert = useCallback((props: Omit<AlertDialogProps, 'isOpen' | 'onClose'>): Promise<void> => {
+    return new Promise((resolve) => {
+        const handleClose = () => {
+            setModalState(null);
+            resolve();
+        };
+        setModalState({ ...props, isOpen: true, onClose: handleClose });
+    });
+  }, []);
 
-  const showConfirm = (props: Omit<AlertDialogProps, 'isOpen' | 'onClose' | 'type'>): Promise<boolean> => {
+  const showConfirm = useCallback((props: Omit<AlertDialogProps, 'isOpen' | 'onClose' | 'type'>): Promise<boolean> => {
     return new Promise((resolve) => {
       const handleConfirm = () => {
         setModalState(null);
@@ -44,10 +50,12 @@ export const ModalProvider = ({ children }: { children: ReactNode }) => {
         onClose: handleCancel,
       });
     });
-  };
+  }, []);
+
+  const value = useMemo(() => ({ showAlert, showConfirm }), [showAlert, showConfirm]);
 
   return (
-    <ModalContext.Provider value={{ showAlert, showConfirm }}>
+    <ModalContext.Provider value={value}>
       {children}
       {modalState && <AlertDialog {...modalState} />}
     </ModalContext.Provider>
