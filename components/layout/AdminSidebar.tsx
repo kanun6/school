@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Users, FileText, ShieldCheck, LogOut, Calendar, BookCopy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
+import { useEffect, useState } from 'react'; // Import useEffect and useState
 
 const navItems = [
   { href: '/admin/users', label: 'จัดการผู้ใช้', icon: Users },
@@ -16,6 +17,47 @@ const navItems = [
 export default function AdminSidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [newIssueCount, setNewIssueCount] = useState(0); // State for notification count
+
+  // Function to fetch the count of new issues
+  const fetchNewIssueCount = async () => {
+    try {
+        const res = await fetch('/api/admin/notifications');
+        if (res.ok) {
+            const data = await res.json();
+            setNewIssueCount(data.count);
+        }
+    } catch (error) {
+        console.error("Failed to fetch notification count:", error);
+    }
+  };
+
+  // Effect to fetch count on initial load and subscribe to realtime updates
+  useEffect(() => {
+    fetchNewIssueCount(); 
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel('admin-issue-notifications')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'issues' },
+        (payload) => {
+            console.log('Issue change detected, refetching count...');
+            fetchNewIssueCount();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Effect to clear the badge when navigating to the report page
+  useEffect(() => {
+    if (pathname === '/admin/report') {
+        setNewIssueCount(0);
+    }
+  }, [pathname]);
 
   const handleSignOut = async () => {
     const supabase = createClient();
@@ -47,7 +89,13 @@ export default function AdminSidebar() {
                   )}
                 >
                   <Icon className="h-4 w-4" />
-                  {label}
+                  <span>{label}</span>
+                  {/* Notification Badge Logic */}
+                  {label === 'เรื่องร้องเรียน' && newIssueCount > 0 && (
+                    <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white">
+                      {newIssueCount}
+                    </span>
+                  )}
                 </Link>
               );
             })}
