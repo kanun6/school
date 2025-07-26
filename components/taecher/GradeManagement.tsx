@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { calculateGrade } from '@/lib/utils';
+import { useModal } from '@/contexts/ModalContext'; // Import useModal
 
 interface ClassData { id: string; name: string; }
 interface StudentData { id: string; first_name: string; last_name: string; score: number | null; }
@@ -14,6 +15,7 @@ export default function GradeManagement() {
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
+    const { showAlert } = useModal(); // Use the modal
 
     // Fetch classes the teacher teaches
     useEffect(() => {
@@ -27,12 +29,14 @@ export default function GradeManagement() {
                 if (data.classes.length > 0) {
                     setSelectedClass(data.classes[0].id);
                 }
-            } catch (err: any) {
-                setError(err.message);
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : 'An unknown error occurred';
+                setError(message);
+                showAlert({ title: 'เกิดข้อผิดพลาด', message, type: 'alert' });
             }
         };
         fetchClasses();
-    }, []);
+    }, [showAlert]);
 
     // Fetch students when a class is selected
     useEffect(() => {
@@ -52,15 +56,17 @@ export default function GradeManagement() {
                 }
                 const data = await res.json();
                 setStudents(data.students);
-            } catch (err: any) {
-                setError(err.message);
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : 'An unknown error occurred';
+                setError(message);
+                showAlert({ title: 'เกิดข้อผิดพลาด', message, type: 'alert' });
                 setStudents([]);
             } finally {
                 setLoading(false);
             }
         };
         fetchStudents();
-    }, [selectedClass]);
+    }, [selectedClass, showAlert]);
 
     const handleScoreChange = (studentId: string, score: string) => {
         const newScore = score === '' ? null : parseInt(score, 10);
@@ -89,12 +95,14 @@ export default function GradeManagement() {
                 body: JSON.stringify({ classId: selectedClass, grades: gradesToSave })
             });
             if (!res.ok) {
-                 const errorData = await res.json();
-                 throw new Error(errorData.error || 'Failed to save grades');
+               const errorData = await res.json();
+               throw new Error(errorData.error || 'Failed to save grades');
             }
-            alert('บันทึกคะแนนเรียบร้อยแล้ว');
-        } catch (err: any) {
-            setError(err.message);
+            showAlert({ title: 'สำเร็จ', message: 'บันทึกคะแนนเรียบร้อยแล้ว' });
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'An unknown error occurred';
+            setError(message);
+            showAlert({ title: 'เกิดข้อผิดพลาด', message, type: 'alert' });
         } finally {
             setIsSaving(false);
         }
@@ -114,7 +122,7 @@ export default function GradeManagement() {
                 )}
             </div>
 
-            {error && <p className="text-red-500 mb-4">{error}</p>}
+            {error && !loading && <p className="text-red-500 mb-4 text-center">{error}</p>}
             
             <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
                 <table className="min-w-full">

@@ -112,8 +112,12 @@ export default function UserManagement() {
       setUsers(usersData);
       setSubjects(subjectsData);
       setClasses(classesData);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+        if (err instanceof Error) {
+            setError(err.message);
+        } else {
+            setError('An unknown error occurred');
+        }
     } finally {
       setLoading(false);
     }
@@ -141,12 +145,16 @@ export default function UserManagement() {
         body: JSON.stringify({ userId, updates }),
       });
       if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to update user.');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update user.');
       }
       await fetchData();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+        if (err instanceof Error) {
+            setError(err.message);
+        } else {
+            setError('An unknown error occurred');
+        }
     } finally {
       setUpdating(null);
     }
@@ -163,8 +171,12 @@ export default function UserManagement() {
       });
       if (!response.ok) throw new Error('Failed to delete user.');
       setUsers(prev => prev.filter(u => u.id !== userId));
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+        if (err instanceof Error) {
+            setError(err.message);
+        } else {
+            setError('An unknown error occurred');
+        }
     } finally {
       setUpdating(null);
     }
@@ -183,7 +195,6 @@ export default function UserManagement() {
         <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSave={handleSaveProfile} />
       )}
       <div className="space-y-8">
-        {/* Admins Section */}
         <div>
           <h3 className="text-xl font-semibold mb-2">Administrators</h3>
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
@@ -191,7 +202,6 @@ export default function UserManagement() {
           </div>
         </div>
         
-        {/* Teachers Section */}
         <div>
           <h3 className="text-xl font-semibold mb-2">Teachers</h3>
            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
@@ -199,7 +209,6 @@ export default function UserManagement() {
           </div>
         </div>
 
-        {/* Students Section */}
         <div>
           <h3 className="text-xl font-semibold mb-2">Students</h3>
            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">

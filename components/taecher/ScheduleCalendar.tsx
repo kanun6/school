@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { DAYS_OF_WEEK, TIME_SLOTS } from '@/lib/constants';
 import ScheduleModal from './ScheduleModal';
-import { Trash2 } from 'lucide-react'; // Import icon
+import { Trash2 } from 'lucide-react';
+import { useModal } from '@/contexts/ModalContext';
 
 interface ScheduleSlot {
   id: string;
@@ -31,20 +32,21 @@ export default function ScheduleCalendar() {
   const [data, setData] = useState<ScheduleData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
   const [modalOpen, setModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<{ day: number; time: string; availableClasses: ClassData[] } | null>(null);
+  const { showConfirm, showAlert } = useModal();
 
   const fetchData = async () => {
     try {
-      setLoading(true);
+      // setLoading(true); // Prevent flashing on refetch
       const response = await fetch('/api/teacher/schedule-data');
       if (!response.ok) throw new Error('Failed to fetch schedule data');
       const scheduleData: ScheduleData = await response.json();
       setData(scheduleData);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+        if (err instanceof Error) setError(err.message);
+        else setError("An unknown error occurred");
     } finally {
       setLoading(false);
     }
@@ -90,22 +92,36 @@ export default function ScheduleCalendar() {
       await fetchData();
       setModalOpen(false);
       setSelectedSlot(null);
-    } catch (err: any) {
-      alert(`Error: ${err.message}`);
+    } catch (err: unknown) {
+        if (err instanceof Error) {
+            showAlert({ title: 'เกิดข้อผิดพลาด', message: err.message, type: 'alert' });
+        } else {
+            showAlert({ title: 'เกิดข้อผิดพลาด', message: 'An unknown error occurred', type: 'alert' });
+        }
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleDeleteSlot = async (slotId: string) => {
-    if (!window.confirm('คุณแน่ใจหรือไม่ว่าต้องการยกเลิกคาบสอนนี้?')) return;
+    const confirmed = await showConfirm({
+        title: 'ยืนยันการยกเลิก',
+        message: 'คุณแน่ใจหรือไม่ว่าต้องการยกเลิกคาบสอนนี้?',
+        confirmText: 'ยืนยัน',
+    });
     
-    try {
-      const response = await fetch(`/api/teacher/schedule?slotId=${slotId}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('ไม่สามารถยกเลิกคาบสอนได้');
-      await fetchData();
-    } catch (err: any) {
-       alert(`Error: ${err.message}`);
+    if (confirmed) {
+      try {
+        const response = await fetch(`/api/teacher/schedule?slotId=${slotId}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error('ไม่สามารถยกเลิกคาบสอนได้');
+        await fetchData();
+      } catch (err: unknown) {
+         if (err instanceof Error) {
+            showAlert({ title: 'เกิดข้อผิดพลาด', message: err.message, type: 'alert' });
+        } else {
+            showAlert({ title: 'เกิดข้อผิดพลาด', message: 'An unknown error occurred', type: 'alert' });
+        }
+      }
     }
   };
 
