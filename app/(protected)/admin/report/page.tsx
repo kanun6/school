@@ -5,6 +5,7 @@ import { Issue, IssueStatus } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useModal } from "@/contexts/ModalContext"; // Import useModal
 
 const StatusBadge = ({ status }: { status: string }) => {
     const colorClasses = {
@@ -20,6 +21,7 @@ export default function ReportPage() {
     const [issues, setIssues] = useState<Issue[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const { showConfirm, showAlert } = useModal(); // Use the modal
 
     const fetchIssues = async () => {
         try {
@@ -57,23 +59,30 @@ export default function ReportPage() {
             const res = await fetch('/api/issues', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ issueId, status }) });
             if (!res.ok) throw new Error("Failed to update status");
         } catch (err: unknown) {
-            if (err instanceof Error) alert(`Error: ${err.message}`);
-            else alert("An unknown error occurred");
+            const message = err instanceof Error ? err.message : "An unknown error occurred";
+            await showAlert({ title: 'เกิดข้อผิดพลาด', message, type: 'alert' });
         }
     };
 
     const handleDeleteIssue = async (issueId: string) => {
-        if (!window.confirm('Are you sure you want to delete this report permanently?')) return;
-        try {
-            const res = await fetch('/api/issues', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ issueId })
-            });
-            if (!res.ok) throw new Error("Failed to delete issue");
-        } catch (err: unknown) {
-            if (err instanceof Error) alert(`Error: ${err.message}`);
-            else alert("An unknown error occurred");
+        const confirmed = await showConfirm({
+            title: 'ยืนยันการลบ',
+            message: 'คุณแน่ใจหรือไม่ว่าต้องการลบรายงานปัญหานี้อย่างถาวร?',
+            confirmText: 'ลบ',
+        });
+
+        if (confirmed) {
+            try {
+                const res = await fetch('/api/issues', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ issueId })
+                });
+                if (!res.ok) throw new Error("Failed to delete issue");
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : "An unknown error occurred";
+                await showAlert({ title: 'เกิดข้อผิดพลาด', message, type: 'alert' });
+            }
         }
     };
 

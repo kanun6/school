@@ -18,9 +18,8 @@ const navItems = [
 export default function AdminSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [newIssueCount, setNewIssueCount] = useState(0); // State for notification count
+  const [newIssueCount, setNewIssueCount] = useState(0);
 
-  // Function to fetch the count of new issues
   const fetchNewIssueCount = async () => {
     try {
         const res = await fetch('/api/admin/notifications');
@@ -33,7 +32,6 @@ export default function AdminSidebar() {
     }
   };
 
-  // Effect to fetch count on initial load and subscribe to realtime updates
   useEffect(() => {
     fetchNewIssueCount(); 
 
@@ -53,7 +51,6 @@ export default function AdminSidebar() {
     };
   }, []);
 
-  // Effect to clear the badge when navigating to the report page
   useEffect(() => {
     if (pathname === '/admin/report') {
         setNewIssueCount(0);
@@ -69,7 +66,6 @@ export default function AdminSidebar() {
   return (
     <aside className="w-64 flex-shrink-0 border-r bg-gray-100 dark:bg-gray-900 h-screen sticky top-0">
       <div className="flex h-full flex-col">
-        {/* Main navigation */}
         <div className="flex-1">
           <div className="flex h-16 items-center border-b px-6 dark:border-gray-800">
             <Link href="/admin/users" className="flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
@@ -79,7 +75,10 @@ export default function AdminSidebar() {
           </div>
           <nav className="grid items-start px-4 text-sm font-medium mt-4">
             {navItems.map(({ href, label, icon: Icon }) => {
-              const isActive = pathname.startsWith(href);
+              // ** THE FIX **
+              // For the home link, check for an exact match. For others, use startsWith.
+              const isActive = href === '/' ? pathname === href : pathname.startsWith(href);
+              
               return (
                 <Link
                   key={href}
@@ -91,7 +90,6 @@ export default function AdminSidebar() {
                 >
                   <Icon className="h-4 w-4" />
                   <span>{label}</span>
-                  {/* Notification Badge Logic */}
                   {label === 'เรื่องร้องเรียน' && newIssueCount > 0 && (
                     <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white">
                       {newIssueCount}
@@ -103,7 +101,6 @@ export default function AdminSidebar() {
           </nav>
         </div>
         
-        {/* Sign Out Button at the bottom */}
         <div className="mt-auto p-4 border-t dark:border-gray-800">
           <button
             onClick={handleSignOut}

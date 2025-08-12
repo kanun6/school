@@ -6,7 +6,7 @@ import { ModalProvider } from "@/contexts/ModalContext";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "School-ONL",
+  title: "School-Sys",
   description: "ระบบจัดการโรงเรียนออนไลน์",
 };
 

@@ -29,8 +29,12 @@ export default function ClassScheduleView() {
         if (data.length > 0) {
           setSelectedClass(data[0].id);
         }
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+            setError(err.message);
+        } else {
+            setError("An unknown error occurred");
+        }
       } finally {
         setLoading(false);
       }
@@ -48,8 +52,12 @@ export default function ClassScheduleView() {
         if (!res.ok) throw new Error(`Failed to fetch schedule for class ${selectedClass}`);
         const data = await res.json();
         setSchedule(data.schedule || []);
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+            setError(err.message);
+        } else {
+            setError("An unknown error occurred");
+        }
         setSchedule([]);
       } finally {
         setLoading(false);
@@ -66,7 +74,7 @@ export default function ClassScheduleView() {
           id="class-select"
           value={selectedClass}
           onChange={(e) => setSelectedClass(e.target.value)}
-          className="select-field max-w-xs"
+          className="select-field max-w-xs bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
         >
           {allClasses.map(c => (
             <option key={c.id} value={c.id}>{c.name}</option>
