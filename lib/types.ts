@@ -40,3 +40,10 @@ export interface Issue {
     role: Role;
   } | null;
 }
+
+export interface AcademicTerm {
+    id: string;
+    name: string;
+    year: number;
+    term: number;
+}
