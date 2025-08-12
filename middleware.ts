@@ -10,10 +10,12 @@ export async function middleware(request: NextRequest) {
   const publicRoutes = ['/', '/signin', '/signup'];
   const isPublicRoute = publicRoutes.includes(pathname);
 
+  // If not logged in and trying to access a protected route, redirect to signin
   if (!user && !isPublicRoute) {
     return NextResponse.redirect(new URL('/signin', request.url));
   }
 
+  // If logged in, handle redirects
   if (user) {
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single<{ role: Role }>();
     if (!profile) return response;
@@ -21,10 +23,14 @@ export async function middleware(request: NextRequest) {
     const userRole = profile.role;
     const roleHomePage = `/${userRole}`;
 
-    if (isPublicRoute) {
+    // ** THE FIX **
+    // If user is on signin or signup page, redirect them to their role's home page.
+    // They are allowed to visit the home page ('/').
+    if (pathname === '/signin' || pathname === '/signup') {
       return NextResponse.redirect(new URL(roleHomePage, request.url));
     }
 
+    // If trying to access a page for another role, redirect to their own homepage
     if (pathname.startsWith('/admin') && userRole !== 'admin') return NextResponse.redirect(new URL(roleHomePage, request.url));
     if (pathname.startsWith('/teacher') && userRole !== 'teacher') return NextResponse.redirect(new URL(roleHomePage, request.url));
     if (pathname.startsWith('/student') && userRole !== 'student') return NextResponse.redirect(new URL(roleHomePage, request.url));

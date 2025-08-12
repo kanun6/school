@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Calendar, GraduationCap, MessageSquareWarning, LogOut } from 'lucide-react';
+import { Calendar, GraduationCap, MessageSquareWarning, LogOut, HomeIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import UserProfile from './UserProfile'; // Import the new component
@@ -11,6 +11,7 @@ const navItems = [
   { href: '/student/schedule', label: 'ตารางเรียน', icon: Calendar },
   { href: '/student/grades', label: 'ดูคะแนน', icon: GraduationCap },
   { href: '/student/report-issue', label: 'แจ้งปัญหา', icon: MessageSquareWarning },
+  { href: '/', label: 'หน้าหลัก', icon: HomeIcon },
 ];
 
 export default function StudentSidebar() {

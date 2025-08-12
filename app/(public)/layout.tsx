@@ -1,27 +1,41 @@
 import Link from "next/link";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { Role } from "@/lib/types";
 
 export default async function PublicLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const cookieStore = cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { get: (name) => cookieStore.get(name)?.value } }
-  );
+  const supabase = createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
+  
+  let roleHomePage = '/';
+  if (user) {
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single<{ role: Role }>();
+      if (profile) {
+          roleHomePage = `/${profile.role}`;
+      }
+  }
 
   return (
     <div className="min-h-full flex flex-col">
       <nav className="bg-gray-800 dark:bg-gray-900 p-4 text-white shadow-md">
         <div className="container mx-auto flex justify-between items-center">
-          <Link href="/" className="text-xl font-bold">School-ONL</Link> {/* <-- UPDATED: เปลี่ยนชื่อที่นี่ */}
-          <div>
-            {!user && (
+          <Link href="/" className="text-xl font-bold">School-ONL</Link>
+          <div className="flex items-center space-x-4">
+            {user ? (
+              <>
+                <Link href={roleHomePage} className="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded-lg text-sm font-medium">
+                    Dashboard
+                </Link>
+                <form action="/auth/signout" method="post">
+                  <button type="submit" className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg text-sm font-medium">
+                    Sign Out
+                  </button>
+                </form>
+              </>
+            ) : (
               <div className="space-x-4">
                 <Link href="/signin" className="hover:text-gray-300">Sign In</Link>
                 <Link href="/signup" className="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded-lg">Sign Up</Link>

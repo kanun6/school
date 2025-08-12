@@ -2,16 +2,17 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Users, FileText, ShieldCheck, LogOut, Calendar, BookCopy } from 'lucide-react';
+import { Users, FileText, ShieldCheck, LogOut, Calendar, BookCopy, HomeIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
-import { useEffect, useState } from 'react'; // Import useEffect and useState
+import { useEffect, useState } from 'react'; 
 
 const navItems = [
   { href: '/admin/users', label: 'จัดการผู้ใช้', icon: Users },
   { href: '/admin/teacher-schedules', label: 'ตารางสอนรวม', icon: Calendar },
   { href: '/admin/class-schedules', label: 'ตารางเรียนตามห้อง', icon: BookCopy },
   { href: '/admin/report', label: 'เรื่องร้องเรียน', icon: FileText },
+  { href: '/', label: 'หน้าหลัก', icon: HomeIcon },
 ];
 
 export default function AdminSidebar() {
