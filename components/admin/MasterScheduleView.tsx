@@ -24,8 +24,12 @@ export default function MasterScheduleView() {
         if (!res.ok) throw new Error('Failed to fetch master schedule');
         const data = await res.json();
         setSchedule(data.allSchedules || []);
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+            setError(err.message);
+        } else {
+            setError("An unknown error occurred");
+        }
       } finally {
         setLoading(false);
       }
