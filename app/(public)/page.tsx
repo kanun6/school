@@ -34,7 +34,7 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-black opacity-50"></div>
         <div className="relative container mx-auto px-6">
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight">
-            การโรงเรียนอย่างมีประสิทธิภาพ
+            การเรียนอย่างมีประสิทธิภาพ
           </h1>
           <p className="mt-4 max-w-2xl mx-auto text-lg text-gray-200">
             ระบบบริหารจัดการโรงเรียนที่เชื่อมต่อผู้บริหาร, คุณครู, และนักเรียนผ่านแพลตฟอร์มต่างๆ ได้อย่างลงตัว
