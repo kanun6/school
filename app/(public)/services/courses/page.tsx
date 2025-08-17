@@ -1,4 +1,5 @@
-import type { SVGProps } from "react";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { LucideIcon } from "lucide-react";
 import {
   BookOpen,
   Calculator,
@@ -8,130 +9,161 @@ import {
   Palette,
   Wrench,
   HeartPulse,
+  Users2,
 } from "lucide-react";
 
-export const metadata = {
-  title: "รายวิชาที่สอน | SchoolSys",
-};
+export const revalidate = 0;
 
-type IconType = (props: SVGProps<SVGSVGElement>) => JSX.Element;
+type IconType = LucideIcon;
 
-type SubjectInfo = {
-  key: string;
-  name: string;
+/** ---------------- Static descriptions (คงที่) ---------------- */
+type StaticMeta = {
   icon: IconType;
   summary: string;
-  topics: string[]; // หัวข้อ/ทักษะหลักของรายวิชา
+  topics: string[];
 };
 
-const SUBJECTS: SubjectInfo[] = [
-  {
-    key: "social",
-    name: "สังคมศึกษา",
+// map ด้วย “ชื่อวิชา” จากตาราง subjects ของคุณ
+const SUBJECT_META_BY_NAME: Record<string, StaticMeta> = {
+  สังคมศึกษา: {
     icon: Globe,
     summary:
-      "ศึกษาประวัติศาสตร์ ภูมิศาสตร์ เศรษฐศาสตร์ ศาสนา และหน้าที่พลเมือง เพื่อเข้าใจสังคมรอบตัวและอยู่ร่วมกันอย่างรับผิดชอบ",
+      "ศึกษาประวัติศาสตร์ ภูมิศาสตร์ เศรษฐศาสตร์ ศาสนา และหน้าที่พลเมือง เพื่อเข้าใจสังคมและอยู่ร่วมกันอย่างรับผิดชอบ",
     topics: [
       "การใช้แผนที่และภูมิศาสตร์มนุษย์",
       "ประวัติศาสตร์ไทยและโลก",
-      "เศรษฐกิจพื้นฐาน การเงินส่วนบุคคล",
+      "เศรษฐกิจพื้นฐาน/การเงินส่วนบุคคล",
       "หน้าที่พลเมือง กฎหมาย และประชาธิปไตย",
     ],
   },
-  {
-    key: "math",
-    name: "คณิตศาสตร์",
+  คณิตศาสตร์: {
     icon: Calculator,
     summary:
-      "พัฒนาความคิดเชิงตรรกะและการแก้ปัญหา ครอบคลุมเลขคณิต พีชคณิต เรขาคณิต สถิติ/ความน่าจะเป็น และแคลคูลัสเบื้องต้น",
+      "พัฒนาความคิดเชิงตรรกะและการแก้ปัญหา ครอบคลุมเลขคณิต พีชคณิต เรขาคณิต สถิติ/ความน่าจะเป็น",
     topics: [
-      "พีชคณิต สมการ อสมการ ฟังก์ชัน",
+      "พีชคณิต สมการ/อสมการ ฟังก์ชัน",
       "เรขาคณิต พื้นที่ ปริมาตร เวกเตอร์",
-      "สถิติ ความน่าจะเป็น และการตีความข้อมูล",
+      "สถิติและความน่าจะเป็น",
       "คณิตศาสตร์สำหรับชีวิตประจำวัน",
     ],
   },
-  {
-    key: "english",
-    name: "ภาษาอังกฤษ",
+  ภาษาอังกฤษ: {
     icon: Languages,
     summary:
-      "ฝึกฟัง–พูด–อ่าน–เขียน เน้นสื่อสารได้จริง ครอบคลุมคำศัพท์ ไวยากรณ์ และการอ่านเชิงวิเคราะห์",
+      "ฝึกฟัง–พูด–อ่าน–เขียน เน้นสื่อสารได้จริง รวมคำศัพท์ ไวยากรณ์ และการอ่านเชิงวิเคราะห์",
     topics: [
       "การสื่อสารในชีวิตประจำวัน/เชิงวิชาการ",
       "ไวยากรณ์และโครงสร้างประโยค",
-      "การอ่านจับใจความและสรุปสาระ",
-      "การเขียนอีเมล รายงาน และบทความ",
+      "การอ่านจับใจความและสรุปความ",
+      "การเขียนอีเมล รายงาน บทความ",
     ],
   },
-  {
-    key: "science",
-    name: "วิทยาศาสตร์",
+  วิทยาศาสตร์: {
     icon: FlaskConical,
     summary:
-      "เรียนรู้หลักการทางฟิสิกส์ เคมี ชีววิทยา พร้อมกระบวนการสืบเสาะทางวิทยาศาสตร์และทักษะการทดลอง",
+      "หลักการฟิสิกส์ เคมี ชีววิทยา พร้อมกระบวนการสืบเสาะทางวิทยาศาสตร์และทักษะการทดลอง",
     topics: [
       "สสาร พลังงาน แรง และการเคลื่อนที่",
-      "ปฏิกิริยาเคมีและโครงสร้างของสสาร",
-      "สิ่งมีชีวิต ระบบนิเวศ และพันธุกรรม",
-      "วิธีวิทยาศาสตร์และความปลอดภัยในห้องทดลอง",
+      "ปฏิกิริยาเคมี/โครงสร้างของสสาร",
+      "สิ่งมีชีวิต ระบบนิเวศ พันธุกรรม",
+      "วิธีวิทยาศาสตร์และความปลอดภัย",
     ],
   },
-  {
-    key: "art",
-    name: "ศิลปะ",
+  ศิลปะ: {
     icon: Palette,
     summary:
-      "สร้างสรรค์และชื่นชมงานศิลป์ ครอบคลุมทัศนศิลป์ ดนตรี นาฏศิลป์ และการออกแบบ พัฒนาความคิดสร้างสรรค์และรสนิยม",
+      "สร้างสรรค์และชื่นชมงานศิลป์ ครอบคลุมทัศนศิลป์ ดนตรี นาฏศิลป์ และการออกแบบ",
     topics: [
-      "องค์ประกอบศิลป์ สี รูปทรง และการจัดวาง",
+      "องค์ประกอบศิลป์ สี รูปทรง",
       "วาดภาพ ระบายสี สื่อผสม",
       "ดนตรี/นาฏศิลป์และการแสดง",
-      "วิจารณ์งานและแฟ้มสะสมผลงาน (Portfolio)",
+      "วิจารณ์งานและแฟ้มสะสมผลงาน",
     ],
   },
-  {
-    key: "thai",
-    name: "ภาษาไทย",
+  ภาษาไทย: {
     icon: BookOpen,
     summary:
-      "พัฒนาทักษะการอ่าน เขียน ฟัง พูด อย่างถูกต้อง และซาบซึ้งวรรณคดีวรรณกรรมไทย",
+      "พัฒนาทักษะการอ่าน เขียน ฟัง พูด อย่างถูกต้อง และซาบซึ้งวรรณคดีไทย",
     topics: [
-      "หลักภาษาไทย การสะกด การใช้วรรณยุกต์",
-      "การอ่านจับใจความและวิเคราะห์ข้อเขียน",
-      "การเขียนเรียงความ รายงาน และจดหมาย",
-      "วรรณคดีไทยและการตีความเชิงวรรณศิลป์",
+      "หลักภาษาไทย การสะกด/วรรณยุกต์",
+      "อ่านจับใจความและวิเคราะห์ข้อเขียน",
+      "เขียนเรียงความ รายงาน จดหมาย",
+      "วรรณคดีไทยและการตีความ",
     ],
   },
-  {
-    key: "tech",
-    name: "การงานอาชีพและเทคโนโลยี",
+  การงานอาชีพและเทคโนโลยี: {
     icon: Wrench,
     summary:
-      "ทักษะชีวิตและอาชีพ เน้นลงมือทำจริง ครอบคลุมงานบ้าน งานช่าง พื้นฐานดิจิทัล/ไอที และการทำโครงงาน",
+      "ทักษะชีวิตและอาชีพ เน้นลงมือทำ งานบ้าน งานช่าง และพื้นฐานดิจิทัล/ไอที",
     topics: [
-      "การวางแผนงาน โครงงาน และการทำงานเป็นทีม",
-      "ทักษะดิจิทัล เช่น เอกสาร ตารางคำนวณ นำเสนอ",
-      "พื้นฐานการเขียนโปรแกรม/ตรรกะอัลกอริทึม (ถ้ามี)",
+      "วางแผนงาน/โครงงานและทำงานเป็นทีม",
+      "ทักษะดิจิทัล เอกสาร/สไลด์/ตารางคำนวณ",
+      "พื้นฐานการเขียนโปรแกรม/ตรรกะ",
       "ความปลอดภัยไซเบอร์และมารยาทออนไลน์",
     ],
   },
-  {
-    key: "health",
-    name: "สุขศึกษา",
+  สุขศึกษา: {
     icon: HeartPulse,
     summary:
-      "ดูแลสุขภาพกาย–ใจอย่างยั่งยืน ครอบคลุมโภชนาการ การออกกำลังกาย เพศศึกษา และความปลอดภัย",
+      "ดูแลสุขภาพกาย–ใจ โภชนาการ ออกกำลังกาย เพศศึกษา และความปลอดภัย",
     topics: [
       "โภชนาการและการวางแผนการกิน",
       "การออกกำลังกายและระบบร่างกาย",
-      "สุขภาพจิต การจัดการความเครียด",
-      "เพศศึกษา การป้องกันสารเสพติด และความปลอดภัย",
+      "สุขภาพจิต/การจัดการความเครียด",
+      "เพศศึกษา/ป้องกันสารเสพติด/ความปลอดภัย",
     ],
   },
-];
+};
 
-export default function CoursesStaticPage() {
+const DEFAULT_META: StaticMeta = {
+  icon: BookOpen,
+  summary: "ยังไม่มีคำอธิบายสำหรับรายวิชานี้",
+  topics: [],
+};
+
+/** ---------------- DB types ---------------- */
+type SubjectRow = {
+  id: string;
+  name: string;
+};
+
+type TeacherSubjectRow = {
+  subject_id: string;
+  teacher_id: string;
+};
+
+export default async function CoursesPage() {
+  const supabase = createSupabaseServerClient();
+
+  // 1) ดึงรายวิชาจาก DB
+  const { data: subjects, error: subjectsErr } = await supabase
+    .from("subjects")
+    .select("id, name")
+    .order("name", { ascending: true });
+
+  if (subjectsErr) {
+    return (
+      <div className="container mx-auto px-6 py-10">
+        <h1 className="text-2xl font-semibold text-red-600">
+          ไม่สามารถดึงรายวิชาได้: {subjectsErr.message}
+        </h1>
+      </div>
+    );
+  }
+
+  // 2) (ตัวเลือก) นับจำนวนครูที่สอนต่อวิชา
+  const { data: links, error: linksErr } = await supabase
+    .from("teacher_subjects")
+    .select("subject_id, teacher_id");
+
+  const teacherCountBySubject = new Map<string, number>();
+  (links ?? []).forEach((row: TeacherSubjectRow) => {
+    teacherCountBySubject.set(
+      row.subject_id,
+      (teacherCountBySubject.get(row.subject_id) ?? 0) + 1
+    );
+  });
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <section className="container mx-auto px-6 py-10">
@@ -143,44 +175,68 @@ export default function CoursesStaticPage() {
             </h1>
           </div>
           <p className="mt-2 text-gray-600 dark:text-gray-400">
-            หน้ารวมรายวิชาตามหลักสูตรของโรงเรียน พร้อมคำอธิบายและหัวข้อสำคัญของแต่ละวิชา
+            ดึงรายวิชาจากฐานข้อมูล และใช้คำอธิบาย/หัวข้อประกอบจากแคตตาล็อกคงที่
           </p>
+          {linksErr && (
+            <p className="mt-2 text-sm text-amber-600">
+              * หมายเหตุ: ไม่สามารถดึงจำนวนครูผู้สอนได้ ({linksErr.message})
+            </p>
+          )}
         </header>
 
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {SUBJECTS.map((s) => {
-            const Icon = s.icon;
-            return (
-              <article
-                key={s.key}
-                className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-sm hover:shadow-md transition-shadow"
-              >
-                <div className="p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/30">
-                        <Icon className="h-5 w-5 text-blue-600 dark:text-blue-300" />
+        {!subjects || subjects.length === 0 ? (
+          <div className="rounded-lg border border-dashed p-8 text-center text-gray-500 dark:text-gray-400">
+            ยังไม่มีรายวิชาในระบบ
+          </div>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {subjects.map((s: SubjectRow) => {
+              const meta = SUBJECT_META_BY_NAME[s.name] ?? DEFAULT_META;
+              const Icon = meta.icon;
+              const teacherCount = teacherCountBySubject.get(s.id) ?? 0;
+
+              return (
+                <article
+                  key={s.id}
+                  className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-sm hover:shadow-md transition-shadow"
+                >
+                  <div className="p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-900/30">
+                          <Icon className="h-5 w-5 text-blue-600 dark:text-blue-300" />
+                        </span>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                          {s.name}
+                        </h3>
+                      </div>
+                    </div>
+
+                    <p className="mt-3 text-sm text-gray-700 dark:text-gray-300">
+                      {meta.summary}
+                    </p>
+
+                    {meta.topics.length > 0 && (
+                      <ul className="mt-4 space-y-1.5 text-sm text-gray-700 dark:text-gray-300 list-disc pl-5">
+                        {meta.topics.map((t) => (
+                          <li key={t}>{t}</li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <div className="mt-4 flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
+                      <Users2 className="h-4 w-4" />
+                      <span>ครูผู้สอน:</span>
+                      <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">
+                        {teacherCount} คน
                       </span>
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        {s.name}
-                      </h3>
                     </div>
                   </div>
-
-                  <p className="mt-3 text-sm text-gray-700 dark:text-gray-300">
-                    {s.summary}
-                  </p>
-
-                  <ul className="mt-4 space-y-1.5 text-sm text-gray-700 dark:text-gray-300 list-disc pl-5">
-                    {s.topics.map((t) => (
-                      <li key={t}>{t}</li>
-                    ))}
-                  </ul>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </section>
     </div>
   );
