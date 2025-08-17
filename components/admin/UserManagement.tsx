@@ -1,10 +1,29 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { ManagedUser, Subject, Class } from '@/lib/types';
+import type { ManagedUser, Subject, Class } from '@/lib/types';
 import EditUserModal from './EditUserModal';
 
-// Reusable table component for displaying users
+/** ----- Strict Types ----- **/
+type RoleUnion = 'admin' | 'teacher' | 'student';
+type BanDuration = '24h' | 'none';
+
+type UpdateUserPayload = Partial<{
+  // profiles
+  first_name: string;
+  last_name: string;
+  role: RoleUnion;
+  // assignments (mapping tables)
+  subject_id: string | null;
+  class_id: string | null;
+  // auth (admin API)
+  ban_duration: BanDuration;
+}>;
+
+/** props type for handleUpdateUser */
+type UpdateUserFn = (userId: string, updates: UpdateUserPayload) => void;
+
+/** ----- User Table (reusable) ----- **/
 const UserTable = ({
   users,
   subjects,
@@ -13,21 +32,26 @@ const UserTable = ({
   handleDeleteUser,
   setEditingUser,
   updating,
-  role
+  role,
 }: {
   users: ManagedUser[];
   subjects: Subject[];
   classes: Class[];
-  handleUpdateUser: (userId: string, updates: object) => void;
+  handleUpdateUser: UpdateUserFn;
   handleDeleteUser: (userId: string, userEmail: string) => void;
   setEditingUser: (user: ManagedUser) => void;
   updating: string | null;
-  role: 'admin' | 'teacher' | 'student';
+  role: RoleUnion;
 }) => {
-  const baseButtonStyles = "px-3 py-1 text-xs font-medium text-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200";
+  const baseButtonStyles =
+    'px-3 py-1 text-xs font-medium text-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200';
 
   if (users.length === 0) {
-    return <p className="text-gray-500 dark:text-gray-400 px-6 py-4">No users in this category.</p>;
+    return (
+      <p className="text-gray-500 dark:text-gray-400 px-6 py-4">
+        No users in this category.
+      </p>
+    );
   }
 
   return (
@@ -38,40 +62,143 @@ const UserTable = ({
             <th scope="col" className="py-3 px-6">Name</th>
             <th scope="col" className="py-3 px-6">Email</th>
             {role !== 'admin' && <th scope="col" className="py-3 px-6">Assignment</th>}
+            <th scope="col" className="py-3 px-6">Role</th>
             <th scope="col" className="py-3 px-6">Status</th>
             <th scope="col" className="py-3 px-6">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {users.map(user => {
-            const isBanned = user.banned_until && new Date(user.banned_until) > new Date();
+          {users.map((user) => {
+            const isBanned =
+              !!user.banned_until && new Date(user.banned_until) > new Date();
+
+            // เปลี่ยน Role แล้วล้างฟิลด์ที่ไม่เกี่ยวข้อง
+            const onChangeRole = (newRole: RoleUnion) => {
+              const updates: UpdateUserPayload = { role: newRole };
+
+              if (newRole === 'admin') {
+                updates.subject_id = null;
+                updates.class_id = null;
+              } else if (newRole === 'teacher') {
+                updates.class_id = null; // ล้าง class
+              } else if (newRole === 'student') {
+                updates.subject_id = null; // ล้าง subject
+              }
+
+              handleUpdateUser(user.id, updates);
+            };
+
             return (
-              <tr key={user.id} className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                <td className="py-4 px-6 font-medium text-gray-900 dark:text-white whitespace-nowrap">{user.first_name} {user.last_name}</td>
+              <tr
+                key={user.id}
+                className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
+              >
+                <td className="py-4 px-6 font-medium text-gray-900 dark:text-white whitespace-nowrap">
+                  {user.first_name} {user.last_name}
+                </td>
                 <td className="py-4 px-6">{user.email}</td>
+
                 {role === 'teacher' && (
                   <td className="py-4 px-6">
-                    <select value={user.subject_id || ''} onChange={(e) => handleUpdateUser(user.id, { subject_id: e.target.value })} disabled={updating === user.id} className="select-field">
+                    <select
+                      value={user.subject_id ?? ''}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                        handleUpdateUser(user.id, {
+                          subject_id: e.target.value ? e.target.value : null,
+                        })
+                      }
+                      disabled={updating === user.id}
+                      className="select-field"
+                    >
                       <option value="">-- Unassigned --</option>
-                      {subjects.map(subject => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
+                      {subjects.map((subject) => (
+                        <option key={subject.id} value={subject.id}>
+                          {subject.name}
+                        </option>
+                      ))}
                     </select>
                   </td>
                 )}
+
                 {role === 'student' && (
                   <td className="py-4 px-6">
-                    <select value={user.class_id || ''} onChange={(e) => handleUpdateUser(user.id, { class_id: e.target.value })} disabled={updating === user.id} className="select-field">
+                    <select
+                      value={user.class_id ?? ''}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                        handleUpdateUser(user.id, {
+                          class_id: e.target.value ? e.target.value : null,
+                        })
+                      }
+                      disabled={updating === user.id}
+                      className="select-field"
+                    >
                       <option value="">-- Unassigned --</option>
-                      {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      {classes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
                     </select>
                   </td>
                 )}
+
                 <td className="py-4 px-6">
-                  {isBanned ? <span className="status-banned">Banned</span> : <span className="status-active">Active</span>}
+                  <select
+                    value={user.role as RoleUnion}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                      onChangeRole(e.target.value as RoleUnion)
+                    }
+                    disabled={updating === user.id}
+                    className="select-field"
+                  >
+                    <option value="admin">admin</option>
+                    <option value="teacher">teacher</option>
+                    <option value="student">student</option>
+                  </select>
                 </td>
+
+                <td className="py-4 px-6">
+                  {isBanned ? (
+                    <span className="status-banned">Banned</span>
+                  ) : (
+                    <span className="status-active">Active</span>
+                  )}
+                </td>
+
                 <td className="py-4 px-6 space-x-2 whitespace-nowrap">
-                  <button onClick={() => setEditingUser(user)} className={`${baseButtonStyles} bg-blue-600 hover:bg-blue-700 focus:ring-blue-500`}>Edit</button>
-                  {isBanned ? <button onClick={() => handleUpdateUser(user.id, { ban_duration: 'none' })} className={`${baseButtonStyles} bg-green-600 hover:bg-green-700 focus:ring-green-500`}>Unban</button> : <button onClick={() => handleUpdateUser(user.id, { ban_duration: '24h' })} className={`${baseButtonStyles} bg-yellow-500 hover:bg-yellow-600 focus:ring-yellow-400`}>Ban</button>}
-                  <button onClick={() => handleDeleteUser(user.id, user.email)} className={`${baseButtonStyles} bg-red-600 hover:bg-red-700 focus:ring-red-500`}>Delete</button>
+                  <button
+                    onClick={() => setEditingUser(user)}
+                    className={`${baseButtonStyles} bg-blue-600 hover:bg-blue-700 focus:ring-blue-500`}
+                  >
+                    Edit
+                  </button>
+
+                  {isBanned ? (
+                    <button
+                      onClick={() =>
+                        handleUpdateUser(user.id, { ban_duration: 'none' })
+                      }
+                      className={`${baseButtonStyles} bg-green-600 hover:bg-green-700 focus:ring-green-500`}
+                    >
+                      Unban
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() =>
+                        handleUpdateUser(user.id, { ban_duration: '24h' })
+                      }
+                      className={`${baseButtonStyles} bg-yellow-500 hover:bg-yellow-600 focus:ring-yellow-400`}
+                    >
+                      Ban
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => handleDeleteUser(user.id, user.email)}
+                    className={`${baseButtonStyles} bg-red-600 hover:bg-red-700 focus:ring-red-500`}
+                  >
+                    Delete
+                  </button>
                 </td>
               </tr>
             );
@@ -82,7 +209,7 @@ const UserTable = ({
   );
 };
 
-
+/** ----- Page Component ----- **/
 export default function UserManagement() {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -105,19 +232,16 @@ export default function UserManagement() {
       if (!subjectsRes.ok) throw new Error('Failed to fetch subjects');
       if (!classesRes.ok) throw new Error('Failed to fetch classes');
 
-      const usersData = await usersRes.json();
-      const subjectsData = await subjectsRes.json();
-      const classesData = await classesRes.json();
-      
+      const usersData: ManagedUser[] = await usersRes.json();
+      const subjectsData: Subject[] = await subjectsRes.json();
+      const classesData: Class[] = await classesRes.json();
+
       setUsers(usersData);
       setSubjects(subjectsData);
       setClasses(classesData);
     } catch (err: unknown) {
-        if (err instanceof Error) {
-            setError(err.message);
-        } else {
-            setError('An unknown error occurred');
-        }
+      if (err instanceof Error) setError(err.message);
+      else setError('An unknown error occurred');
     } finally {
       setLoading(false);
     }
@@ -129,13 +253,13 @@ export default function UserManagement() {
 
   const { admins, teachers, students } = useMemo(() => {
     return {
-      admins: users.filter(u => u.role === 'admin'),
-      teachers: users.filter(u => u.role === 'teacher'),
-      students: users.filter(u => u.role === 'student'),
+      admins: users.filter((u) => u.role === 'admin'),
+      teachers: users.filter((u) => u.role === 'teacher'),
+      students: users.filter((u) => u.role === 'student'),
     };
   }, [users]);
 
-  const handleUpdateUser = async (userId: string, updates: object) => {
+  const handleUpdateUser: UpdateUserFn = async (userId, updates) => {
     setUpdating(userId);
     setError('');
     try {
@@ -145,16 +269,14 @@ export default function UserManagement() {
         body: JSON.stringify({ userId, updates }),
       });
       if (!response.ok) {
-        const errorData = await response.json();
+        // backend ควรส่ง { error: string }
+        const errorData: { error?: string } = await response.json();
         throw new Error(errorData.error || 'Failed to update user.');
       }
       await fetchData();
     } catch (err: unknown) {
-        if (err instanceof Error) {
-            setError(err.message);
-        } else {
-            setError('An unknown error occurred');
-        }
+      if (err instanceof Error) setError(err.message);
+      else setError('An unknown error occurred');
     } finally {
       setUpdating(null);
     }
@@ -170,19 +292,19 @@ export default function UserManagement() {
         body: JSON.stringify({ userId }),
       });
       if (!response.ok) throw new Error('Failed to delete user.');
-      setUsers(prev => prev.filter(u => u.id !== userId));
+      setUsers((prev) => prev.filter((u) => u.id !== userId));
     } catch (err: unknown) {
-        if (err instanceof Error) {
-            setError(err.message);
-        } else {
-            setError('An unknown error occurred');
-        }
+      if (err instanceof Error) setError(err.message);
+      else setError('An unknown error occurred');
     } finally {
       setUpdating(null);
     }
   };
 
-  const handleSaveProfile = async (userId: string, updates: { first_name: string; last_name: string }) => {
+  const handleSaveProfile = async (
+    userId: string,
+    updates: { first_name: string; last_name: string }
+  ) => {
     await handleUpdateUser(userId, updates);
   };
 
@@ -192,27 +314,44 @@ export default function UserManagement() {
   return (
     <>
       {editingUser && (
-        <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSave={handleSaveProfile} />
+        <EditUserModal
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
+          onSave={handleSaveProfile}
+        />
       )}
+
       <div className="space-y-8">
         <div>
           <h3 className="text-xl font-semibold mb-2">Administrators</h3>
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-            <UserTable users={admins} role="admin" {...{ subjects, classes, handleUpdateUser, handleDeleteUser, setEditingUser, updating }} />
+            <UserTable
+              users={admins}
+              role="admin"
+              {...{ subjects, classes, handleUpdateUser, handleDeleteUser, setEditingUser, updating }}
+            />
           </div>
         </div>
-        
+
         <div>
           <h3 className="text-xl font-semibold mb-2">Teachers</h3>
-           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-            <UserTable users={teachers} role="teacher" {...{ subjects, classes, handleUpdateUser, handleDeleteUser, setEditingUser, updating }} />
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+            <UserTable
+              users={teachers}
+              role="teacher"
+              {...{ subjects, classes, handleUpdateUser, handleDeleteUser, setEditingUser, updating }}
+            />
           </div>
         </div>
 
         <div>
           <h3 className="text-xl font-semibold mb-2">Students</h3>
-           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-            <UserTable users={students} role="student" {...{ subjects, classes, handleUpdateUser, handleDeleteUser, setEditingUser, updating }} />
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+            <UserTable
+              users={students}
+              role="student"
+              {...{ subjects, classes, handleUpdateUser, handleDeleteUser, setEditingUser, updating }}
+            />
           </div>
         </div>
       </div>
