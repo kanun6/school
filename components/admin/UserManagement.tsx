@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { ManagedUser, Subject, Class } from '@/lib/types';
 import EditUserModal from './EditUserModal';
-import { useModal } from '@/contexts/ModalContext'; // ✅ ใช้ modal เดียวกับก่อนหน้า
+import { useModal } from '@/contexts/ModalContext';
 
 /** ----- Strict Types ----- **/
 type RoleUnion = 'admin' | 'teacher' | 'student';
@@ -22,7 +22,9 @@ type UpdateUserPayload = Partial<{
 }>;
 
 /** props type for handleUpdateUser */
-type UpdateUserFn = (userId: string, updates: UpdateUserPayload) => void;
+type UpdateUserFn = (userId: string, updates: UpdateUserPayload) => void | Promise<void>;
+type BanUserFn = (userId: string, userEmail?: string) => void | Promise<void>;
+type UnbanUserFn = (userId: string, userEmail?: string) => void | Promise<void>;
 
 /** ----- User Table (reusable) ----- **/
 const UserTable = ({
@@ -31,6 +33,8 @@ const UserTable = ({
   classes,
   handleUpdateUser,
   handleDeleteUser,
+  handleBanUser,
+  handleUnbanUser,
   setEditingUser,
   updating,
   role,
@@ -40,6 +44,8 @@ const UserTable = ({
   classes: Class[];
   handleUpdateUser: UpdateUserFn;
   handleDeleteUser: (userId: string, userEmail: string) => void | Promise<void>;
+  handleBanUser: BanUserFn;
+  handleUnbanUser: UnbanUserFn;
   setEditingUser: (user: ManagedUser) => void;
   updating: string | null;
   role: RoleUnion;
@@ -81,9 +87,9 @@ const UserTable = ({
                 updates.subject_id = null;
                 updates.class_id = null;
               } else if (newRole === 'teacher') {
-                updates.class_id = null; // ล้าง class
+                updates.class_id = null;
               } else if (newRole === 'student') {
-                updates.subject_id = null; // ล้าง subject
+                updates.subject_id = null;
               }
 
               handleUpdateUser(user.id, updates);
@@ -176,9 +182,7 @@ const UserTable = ({
 
                   {isBanned ? (
                     <button
-                      onClick={() =>
-                        handleUpdateUser(user.id, { ban_duration: 'none' })
-                      }
+                      onClick={() => handleUnbanUser(user.id, user.email)}
                       className={`${baseButtonStyles} bg-green-600 hover:bg-green-700 focus:ring-green-500`}
                       disabled={updating === user.id}
                     >
@@ -186,9 +190,7 @@ const UserTable = ({
                     </button>
                   ) : (
                     <button
-                      onClick={() =>
-                        handleUpdateUser(user.id, { ban_duration: '24h' })
-                      }
+                      onClick={() => handleBanUser(user.id, user.email)}
                       className={`${baseButtonStyles} bg-yellow-500 hover:bg-yellow-600 focus:ring-yellow-400`}
                       disabled={updating === user.id}
                     >
@@ -223,7 +225,7 @@ export default function UserManagement() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
 
-  const { showConfirm, showAlert } = useModal(); // ✅ ใช้ modal
+  const { showConfirm, showAlert } = useModal();
 
   const fetchData = async () => {
     try {
@@ -265,6 +267,7 @@ export default function UserManagement() {
     };
   }, [users]);
 
+  /** ใช้กับการอัปเดตทั่วไป (role/assignment) */
   const handleUpdateUser: UpdateUserFn = async (userId, updates) => {
     setUpdating(userId);
     setError('');
@@ -279,9 +282,90 @@ export default function UserManagement() {
         throw new Error(errorData.error || 'Failed to update user.');
       }
       await fetchData();
+
+      // ✅ SUCCESS: อย่าส่ง type: 'success' เพราะ type รองรับแค่ 'alert' | 'confirm'
+      await showAlert({
+        title: 'อัปเดตสำเร็จ',
+        message: 'บันทึกข้อมูลผู้ใช้เรียบร้อยแล้ว',
+        // type: undefined  (ละไว้)
+      });
     } catch (err: unknown) {
-      if (err instanceof Error) setError(err.message);
-      else setError('An unknown error occurred');
+      const msg = err instanceof Error ? err.message : 'An unknown error occurred';
+      await showAlert({
+        title: 'เกิดข้อผิดพลาด',
+        message: msg,
+        type: 'alert',
+      });
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  /** ✅ Ban (มี confirm + alert) */
+  const handleBanUser: BanUserFn = async (userId, userEmail) => {
+    const confirmed = await showConfirm({
+      title: 'ยืนยันการแบน',
+      message: `คุณแน่ใจหรือไม่ว่าต้องการแบนผู้ใช้ ${userEmail ?? ''} เป็นเวลา 24 ชั่วโมง?`,
+      confirmText: 'แบน',
+    });
+    if (!confirmed) return;
+
+    setUpdating(userId);
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, updates: { ban_duration: '24h' as BanDuration } }),
+      });
+      if (!response.ok) throw new Error('Failed to ban user.');
+      await fetchData();
+      await showAlert({
+        title: 'สำเร็จ',
+        message: `${userEmail ?? 'ผู้ใช้'} ถูกแบนเรียบร้อยแล้ว (24 ชั่วโมง)`,
+        // ไม่ส่ง type
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'An unknown error occurred';
+      await showAlert({
+        title: 'เกิดข้อผิดพลาด',
+        message: msg,
+        type: 'alert',
+      });
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  /** ✅ Unban (มี confirm + alert) */
+  const handleUnbanUser: UnbanUserFn = async (userId, userEmail) => {
+    const confirmed = await showConfirm({
+      title: 'ยืนยันการยกเลิกแบน',
+      message: `คุณแน่ใจหรือไม่ว่าต้องการยกเลิกการแบนผู้ใช้ ${userEmail ?? ''}?`,
+      confirmText: 'ยกเลิกแบน',
+    });
+    if (!confirmed) return;
+
+    setUpdating(userId);
+    try {
+      const response = await fetch('/api/admin/users', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, updates: { ban_duration: 'none' as BanDuration } }),
+      });
+      if (!response.ok) throw new Error('Failed to unban user.');
+      await fetchData();
+      await showAlert({
+        title: 'สำเร็จ',
+        message: `${userEmail ?? 'ผู้ใช้'} ถูกยกเลิกการแบนแล้ว`,
+        // ไม่ส่ง type
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'An unknown error occurred';
+      await showAlert({
+        title: 'เกิดข้อผิดพลาด',
+        message: msg,
+        type: 'alert',
+      });
     } finally {
       setUpdating(null);
     }
@@ -309,7 +393,7 @@ export default function UserManagement() {
       await showAlert({
         title: 'สำเร็จ',
         message: `ลบผู้ใช้ ${userEmail} เรียบร้อยแล้ว`,
-        type: 'success',
+        // ไม่ส่ง type
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'An unknown error occurred';
@@ -350,7 +434,16 @@ export default function UserManagement() {
             <UserTable
               users={admins}
               role="admin"
-              {...{ subjects, classes, handleUpdateUser, handleDeleteUser, setEditingUser, updating }}
+              {...{
+                subjects,
+                classes,
+                handleUpdateUser,
+                handleDeleteUser,
+                handleBanUser,
+                handleUnbanUser,
+                setEditingUser,
+                updating,
+              }}
             />
           </div>
         </div>
@@ -361,7 +454,16 @@ export default function UserManagement() {
             <UserTable
               users={teachers}
               role="teacher"
-              {...{ subjects, classes, handleUpdateUser, handleDeleteUser, setEditingUser, updating }}
+              {...{
+                subjects,
+                classes,
+                handleUpdateUser,
+                handleDeleteUser,
+                handleBanUser,
+                handleUnbanUser,
+                setEditingUser,
+                updating,
+              }}
             />
           </div>
         </div>
@@ -372,7 +474,16 @@ export default function UserManagement() {
             <UserTable
               users={students}
               role="student"
-              {...{ subjects, classes, handleUpdateUser, handleDeleteUser, setEditingUser, updating }}
+              {...{
+                subjects,
+                classes,
+                handleUpdateUser,
+                handleDeleteUser,
+                handleBanUser,
+                handleUnbanUser,
+                setEditingUser,
+                updating,
+              }}
             />
           </div>
         </div>
