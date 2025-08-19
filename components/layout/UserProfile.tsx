@@ -5,7 +5,7 @@ import { User, School } from 'lucide-react';
 
 interface UserProfileData {
     name: string;
-    detail: string; // Can be class name or subject name
+    detail: string; 
 }
 
 export default function UserProfile({ role }: { role: 'student' | 'teacher' }) {
