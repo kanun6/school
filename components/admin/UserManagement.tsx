@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { ManagedUser, Subject, Class } from '@/lib/types';
 import EditUserModal from './EditUserModal';
+import { useModal } from '@/contexts/ModalContext'; // ✅ ใช้ modal เดียวกับก่อนหน้า
 
 /** ----- Strict Types ----- **/
 type RoleUnion = 'admin' | 'teacher' | 'student';
@@ -38,7 +39,7 @@ const UserTable = ({
   subjects: Subject[];
   classes: Class[];
   handleUpdateUser: UpdateUserFn;
-  handleDeleteUser: (userId: string, userEmail: string) => void;
+  handleDeleteUser: (userId: string, userEmail: string) => void | Promise<void>;
   setEditingUser: (user: ManagedUser) => void;
   updating: string | null;
   role: RoleUnion;
@@ -179,6 +180,7 @@ const UserTable = ({
                         handleUpdateUser(user.id, { ban_duration: 'none' })
                       }
                       className={`${baseButtonStyles} bg-green-600 hover:bg-green-700 focus:ring-green-500`}
+                      disabled={updating === user.id}
                     >
                       Unban
                     </button>
@@ -188,6 +190,7 @@ const UserTable = ({
                         handleUpdateUser(user.id, { ban_duration: '24h' })
                       }
                       className={`${baseButtonStyles} bg-yellow-500 hover:bg-yellow-600 focus:ring-yellow-400`}
+                      disabled={updating === user.id}
                     >
                       Ban
                     </button>
@@ -196,6 +199,7 @@ const UserTable = ({
                   <button
                     onClick={() => handleDeleteUser(user.id, user.email)}
                     className={`${baseButtonStyles} bg-red-600 hover:bg-red-700 focus:ring-red-500`}
+                    disabled={updating === user.id}
                   >
                     Delete
                   </button>
@@ -218,6 +222,8 @@ export default function UserManagement() {
   const [error, setError] = useState('');
   const [updating, setUpdating] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
+
+  const { showConfirm, showAlert } = useModal(); // ✅ ใช้ modal
 
   const fetchData = async () => {
     try {
@@ -269,7 +275,6 @@ export default function UserManagement() {
         body: JSON.stringify({ userId, updates }),
       });
       if (!response.ok) {
-        // backend ควรส่ง { error: string }
         const errorData: { error?: string } = await response.json();
         throw new Error(errorData.error || 'Failed to update user.');
       }
@@ -283,7 +288,14 @@ export default function UserManagement() {
   };
 
   const handleDeleteUser = async (userId: string, userEmail: string) => {
-    if (!window.confirm(`Are you sure you want to permanently delete user ${userEmail}?`)) return;
+    const confirmed = await showConfirm({
+      title: 'ยืนยันการลบ',
+      message: `คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้ ${userEmail} แบบถาวร?`,
+      confirmText: 'ลบ',
+    });
+
+    if (!confirmed) return;
+
     setUpdating(userId);
     try {
       const response = await fetch('/api/admin/users', {
@@ -293,9 +305,19 @@ export default function UserManagement() {
       });
       if (!response.ok) throw new Error('Failed to delete user.');
       setUsers((prev) => prev.filter((u) => u.id !== userId));
+
+      await showAlert({
+        title: 'สำเร็จ',
+        message: `ลบผู้ใช้ ${userEmail} เรียบร้อยแล้ว`,
+        type: 'success',
+      });
     } catch (err: unknown) {
-      if (err instanceof Error) setError(err.message);
-      else setError('An unknown error occurred');
+      const message = err instanceof Error ? err.message : 'An unknown error occurred';
+      await showAlert({
+        title: 'เกิดข้อผิดพลาด',
+        message,
+        type: 'alert',
+      });
     } finally {
       setUpdating(null);
     }
