@@ -28,7 +28,7 @@ export default function StudentSidebar() {
     <aside className="w-64 flex-shrink-0 border-r bg-gray-100 dark:bg-gray-900 h-screen sticky top-0">
       <div className="flex h-full flex-col">
         <div className="flex-1">
-          <UserProfile role="student" /> {/* <-- UPDATED: Use the UserProfile component */}
+          <UserProfile role="student" asLink/> {/* <-- UPDATED: Use the UserProfile component */}
           <nav className="grid items-start px-4 text-sm font-medium mt-4">
             {navItems.map(({ href, label, icon: Icon }) => {
               const isActive = href === '/' ? pathname === href : pathname.startsWith(href);
