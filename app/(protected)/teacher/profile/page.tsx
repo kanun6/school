@@ -1,4 +1,3 @@
-// ตัวอย่าง: app/teacher/profile/page.tsx
 'use client';
 
 import UserProfile from "@/components/layout/UserProfile";
