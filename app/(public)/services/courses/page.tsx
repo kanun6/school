@@ -133,7 +133,7 @@ type TeacherSubjectRow = {
 };
 
 export default async function CoursesPage() {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
 
   // 1) ดึงรายวิชาจาก DB
   const { data: subjects, error: subjectsErr } = await supabase

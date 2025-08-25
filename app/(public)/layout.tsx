@@ -1,30 +1,31 @@
+// app/(public)/layout.tsx
 import Link from "next/link";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabaseServerClient } from "@/lib/supabase/server"; // ← ใช้ชื่อฟังก์ชันตามที่ export จริง
 import { Role } from "@/lib/types";
 import { BookOpenCheck } from "lucide-react";
 import NavServicesDropdown from "@/components/layout/NavServicesDropdown";
 
-
 export default async function PublicLayout({
   children,
-}: {
-  children: React.ReactNode;
-}) {
-  const supabase = createSupabaseServerClient();
+}: { children: React.ReactNode }) {
+  // ต้อง await เพราะ helper คืน Promise<SupabaseClient>
+  const supabase = await getSupabaseServerClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   let roleHomePage = "/";
+
   if (user) {
+    type ProfileRole = { role: Role };
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", user.id)
-      .single<{ role: Role }>();
-    if (profile) {
-      roleHomePage = `/${profile.role}`;
-    }
+      .single<ProfileRole>();
+
+    if (profile?.role) roleHomePage = `/${profile.role}`;
   }
 
   return (
@@ -32,38 +33,17 @@ export default async function PublicLayout({
       <header className="sticky top-0 z-40 w-full bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b dark:border-gray-800">
         <div className="container mx-auto flex h-16 items-center justify-between px-6">
           {/* Brand */}
-          <Link
-            href="/"
-            className="flex items-center gap-2 font-bold text-lg text-gray-900 dark:text-white"
-          >
+          <Link href="/" className="flex items-center gap-2 font-bold text-lg text-gray-900 dark:text-white">
             <BookOpenCheck className="h-6 w-6 text-blue-600" />
             <span>SchoolSys</span>
           </Link>
 
           {/* Nav (desktop) */}
           <nav className="hidden md:flex items-center space-x-6 text-sm font-medium text-gray-600 dark:text-gray-300">
-            <Link
-              href="/"
-              className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-            >
-              หน้าแรก
-            </Link>
-
-            {/* บริการ (Dropdown แบบคลิก) */}
+            <Link href="/" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">หน้าแรก</Link>
             <NavServicesDropdown />
-
-            <Link
-              href="/about"
-              className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-            >
-              เกี่ยวกับ
-            </Link>
-            <Link
-              href="/contact"
-              className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-            >
-              ติดต่อเรา
-            </Link>
+            <Link href="/about" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">เกี่ยวกับ</Link>
+            <Link href="/contact" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">ติดต่อเรา</Link>
           </nav>
 
           {/* Right actions */}

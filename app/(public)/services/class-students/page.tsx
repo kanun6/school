@@ -15,7 +15,7 @@ type StudentClassRow = {
 };
 
 export default async function ClassStudentsPage() {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
 
   /** 1) ดึงรายการห้องทั้งหมด */
   const { data: classesData, error: classesErr } = await supabase

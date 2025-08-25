@@ -22,7 +22,7 @@ type Subject = {
 };
 
 export default async function StaffPage() {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
 
   // 1) ดึงอาจารย์ทั้งหมด
   const { data: teacherRows, error: teacherErr } = await supabase
