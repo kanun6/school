@@ -1,119 +1,88 @@
+// app/api/student/grades/route.ts
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
-interface GradeInfo {
-  score: number | null;
-  grade: string | null;
-}
+type MaybeArray<T> = T | T[] | null | undefined;
+const pickOne = <T,>(v: MaybeArray<T>): T | null =>
+  Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 
-interface SubjectWithGrades {
+interface SubjectRow {
   name: string;
-  grades: GradeInfo[]; // grades เป็น array ของ GradeInfo
+  grades: { score: number | null; grade: string | null }[];
+}
+interface StudentClassRow {
+  class: MaybeArray<{ name: string }>;
 }
 
 export async function GET(_request: Request) {
-  // ต้อง await cookies() เพื่อให้ได้ ReadonlyRequestCookies
   const cookieStore = await cookies();
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get: (name: string) => {
-          const cookie = cookieStore.get(name);
-          return cookie?.value;
-        },
-      },
-    }
+    { cookies: { get: (name: string) => cookieStore.get(name)?.value } }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    // 1. Get student's profile and class
-    const { data: studentInfoRaw, error: studentInfoError } = await supabase
-      .from('profiles')
-      .select(
-        `
-        first_name,
-        last_name,
-        student_class:student_classes(
-          class:classes(name)
-        )
-      `
-      )
-      .eq('id', user.id)
+    // 1) ห้องของนักเรียน (เอาแค่ 1 แถวให้แน่นอน)
+    const { data: scRaw, error: scErr } = await supabase
+      .from('student_classes')
+      .select('class:classes(name)')
+      .eq('student_id', user.id)
+      .limit(1)
       .single();
 
-    if (studentInfoError) throw studentInfoError;
+    if (scErr) throw scErr;
 
-    // กำหนดชนิดข้อมูลให้ตรงกับโครงสร้างที่ได้ (หรือ cast เป็น any หากต้องการข้าม type-check)
-    const studentInfo = studentInfoRaw as {
-      first_name: string;
-      last_name: string;
-      student_class: {
-        class: { name: string }[];
-      }[];
-    };
-
-    // ตรวจสอบว่ามีห้องเรียนกำหนดหรือไม่
-    if (!studentInfo.student_class || studentInfo.student_class.length === 0) {
+    const className =
+      pickOne((scRaw as StudentClassRow).class)?.name ?? '';
+    if (!className) {
       return NextResponse.json({ error: 'คุณยังไม่ถูกกำหนดห้องเรียน' }, { status: 404 });
     }
 
-    const studentName = `${studentInfo.first_name} ${studentInfo.last_name}`;
+    // 2) ชื่อ-สกุลนักเรียน
+    const { data: profile, error: pErr } = await supabase
+      .from('profiles')
+      .select('first_name, last_name')
+      .eq('id', user.id)
+      .single();
+    if (pErr) throw pErr;
+    const studentName = `${profile.first_name} ${profile.last_name}`;
 
-    // เนื่องจาก student_class เป็นอาร์เรย์ และ class เป็นอาร์เรย์ ให้เลือก element แรก
-    const className =
-      studentInfo.student_class[0]?.class[0]?.name ?? '';
-
-    // 2. Get all subjects and the student's grades for them
-    const { data: subjects, error: subjectsError } = await supabase
+    // 3) รายวิชา + เกรดของนักเรียนคนนี้
+    const { data: subjects, error: subErr } = await supabase
       .from('subjects')
-      .select(
-        `
+      .select(`
         name,
-        grades (
-          score,
-          grade
-        )
-      `
-      )
+        grades ( score, grade )
+      `)
       .eq('grades.student_id', user.id);
+    if (subErr) throw subErr;
 
-    if (subjectsError) throw subjectsError;
-
-    // 3. Combine the data
-    const grades = subjects.map((subject: SubjectWithGrades) => {
-      // สมมุติว่า grades เป็นอาร์เรย์ เลือกตัวแรก
-      const gradeInfo = subject.grades?.[0];
+    const grades = (subjects as SubjectRow[]).map((s) => {
+      const g = s.grades?.[0];
       return {
-        subject_name: subject.name,
-        score: gradeInfo?.score ?? null,
-        grade: gradeInfo?.grade ?? null,
+        subject_name: s.name,
+        score: g?.score ?? null,
+        grade: g?.grade ?? null,
       };
     });
 
-    // 4. Calculate GPA
-    const gradedSubjects = grades.filter((g) => g.grade !== null);
-    let gpa = 'N/A';
-    if (gradedSubjects.length > 0) {
-      const totalGradePoints = gradedSubjects.reduce(
-        (sum, g) => sum + parseFloat(g.grade!), 0
-      );
-      gpa = (totalGradePoints / gradedSubjects.length).toFixed(2);
-    }
+    // 4) คำนวณ GPA
+    const graded = grades.filter((g) => g.grade !== null);
+    const gpa =
+      graded.length > 0
+        ? (
+            graded.reduce((sum, g) => sum + Number(g.grade), 0) / graded.length
+          ).toFixed(2)
+        : 'N/A';
 
-    return NextResponse.json({
-      studentName,
-      className,
-      grades,
-      gpa,
-    });
+    return NextResponse.json({ studentName, className, grades, gpa });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });

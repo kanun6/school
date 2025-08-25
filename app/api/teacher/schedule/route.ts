@@ -34,20 +34,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: 'Schedule created' }, { status: 201 });
 }
 
+// app/api/teacher/schedule/route.ts (เฉพาะส่วน DELETE)
 export async function DELETE(request: Request) {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { cookies: { get: (name) => cookieStore.get(name)?.value } });
-    const { data: { user } } = await supabase.auth.getUser();
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { get: (name) => cookieStore.get(name)?.value } }
+  );
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { searchParams } = new URL(request.url);
+  const slotId = searchParams.get('slotId');
+  if (!slotId) return NextResponse.json({ error: 'Slot ID is required' }, { status: 400 });
 
-    const { searchParams } = new URL(request.url);
-    const slotId = searchParams.get('slotId');
-    if (!slotId) return NextResponse.json({ error: 'Slot ID is required' }, { status: 400 });
+  const { error } = await supabase
+    .from('schedule_slots')
+    .delete()
+    .eq('id', slotId)            // ใช้ id จริง
+    .eq('teacher_id', user.id);  // กันลบของคนอื่น
 
-    const { error } = await supabase.from('schedule_slots').delete().match({ id: slotId, teacher_id: user.id });
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-    return NextResponse.json({ message: 'Schedule deleted' });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ message: 'Schedule deleted' });
 }
