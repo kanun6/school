@@ -10,7 +10,7 @@ interface UserWithBan extends User {
 }
 
 async function isAdmin(): Promise<boolean> {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
