@@ -115,54 +115,30 @@ const SUBJECT_META_BY_NAME: Record<string, StaticMeta> = {
   },
 };
 
-const DEFAULT_META: StaticMeta = {
-  icon: BookOpen,
-  summary: "ยังไม่มีคำอธิบายสำหรับรายวิชานี้",
-  topics: [],
-};
+const DEFAULT_META: StaticMeta = { icon: BookOpen, summary: "ยังไม่มีคำอธิบายสำหรับรายวิชานี้", topics: [] };
 
-/** ---------------- DB types ---------------- */
-type SubjectRow = {
-  id: string;
-  name: string;
-};
-
-type TeacherSubjectRow = {
-  subject_id: string;
-  teacher_id: string;
-};
+type Row = { id: string; name: string; teacher_count: number };
 
 export default async function CoursesPage() {
   const supabase = await createSupabaseServerClient();
 
-  // 1) ดึงรายวิชาจาก DB
-  const { data: subjects, error: subjectsErr } = await supabase
-    .from("subjects")
-    .select("id, name")
-    .order("name", { ascending: true });
+  // ดึงจาก view เดียว ครบทั้งชื่อวิชาและจำนวนครู
+  const { data, error } = await supabase
+    .from("subject_teacher_counts")
+    .select("id, name, teacher_count")
+    .order("name");
 
-  if (subjectsErr) {
+  if (error) {
     return (
       <div className="container mx-auto px-6 py-10">
         <h1 className="text-2xl font-semibold text-red-600">
-          ไม่สามารถดึงรายวิชาได้: {subjectsErr.message}
+          ไม่สามารถดึงรายวิชาได้: {error.message}
         </h1>
       </div>
     );
   }
 
-  // 2) (ตัวเลือก) นับจำนวนครูที่สอนต่อวิชา
-  const { data: links, error: linksErr } = await supabase
-    .from("teacher_subjects")
-    .select("subject_id, teacher_id");
-
-  const teacherCountBySubject = new Map<string, number>();
-  (links ?? []).forEach((row: TeacherSubjectRow) => {
-    teacherCountBySubject.set(
-      row.subject_id,
-      (teacherCountBySubject.get(row.subject_id) ?? 0) + 1
-    );
-  });
+  const subjects: Row[] = data ?? [];
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -177,23 +153,17 @@ export default async function CoursesPage() {
           <p className="mt-2 text-gray-600 dark:text-gray-400">
             ดึงรายวิชาจากฐานข้อมูล และใช้คำอธิบาย/หัวข้อประกอบจากแคตตาล็อกคงที่
           </p>
-          {linksErr && (
-            <p className="mt-2 text-sm text-amber-600">
-              * หมายเหตุ: ไม่สามารถดึงจำนวนครูผู้สอนได้ ({linksErr.message})
-            </p>
-          )}
         </header>
 
-        {!subjects || subjects.length === 0 ? (
+        {subjects.length === 0 ? (
           <div className="rounded-lg border border-dashed p-8 text-center text-gray-500 dark:text-gray-400">
             ยังไม่มีรายวิชาในระบบ
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {subjects.map((s: SubjectRow) => {
+            {subjects.map((s) => {
               const meta = SUBJECT_META_BY_NAME[s.name] ?? DEFAULT_META;
               const Icon = meta.icon;
-              const teacherCount = teacherCountBySubject.get(s.id) ?? 0;
 
               return (
                 <article
@@ -218,9 +188,7 @@ export default async function CoursesPage() {
 
                     {meta.topics.length > 0 && (
                       <ul className="mt-4 space-y-1.5 text-sm text-gray-700 dark:text-gray-300 list-disc pl-5">
-                        {meta.topics.map((t) => (
-                          <li key={t}>{t}</li>
-                        ))}
+                        {meta.topics.map((t) => <li key={t}>{t}</li>)}
                       </ul>
                     )}
 
@@ -228,7 +196,7 @@ export default async function CoursesPage() {
                       <Users2 className="h-4 w-4" />
                       <span>ครูผู้สอน:</span>
                       <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">
-                        {teacherCount} คน
+                        {s.teacher_count} คน
                       </span>
                     </div>
                   </div>

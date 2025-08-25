@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
+/* ---------- Types ---------- */
 type MaybeArray<T> = T | T[] | null | undefined;
 
 interface ClassInfo {
@@ -32,9 +33,17 @@ interface GradeRow {
   score: number | null;
 }
 
+/* ---------- Helpers ---------- */
 const pickOne = <T,>(v: MaybeArray<T>): T | null =>
   Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 
+/* =======================================================================
+ * GET
+ * -----------------------------------------------------------------------
+ * - /api/teacher/grades?getClasses=true  → รายชื่อห้องที่ครูสอน + ชื่อวิชา
+ * - /api/teacher/grades?classId=...      → รายชื่อนักเรียน + คะแนนของวิชานั้น
+ * =======================================================================
+ */
 export async function GET(request: Request) {
   const cookieStore = await cookies();
   const supabase = createServerClient(
@@ -126,4 +135,84 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+}
+
+
+export async function POST(request: Request) {
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { get: (name: string) => cookieStore.get(name)?.value } }
+  );
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const body = await request.json().catch(() => null);
+  if (!body || !Array.isArray(body.grades)) {
+    return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
+  }
+
+  const { classId, grades } = body as {
+    classId?: string;
+    grades: { studentId: string; score: number | null; grade: number | string | null }[];
+  };
+
+  // ✅ ต้องมี classId เสมอ เพราะ grades.class_id = NOT NULL
+  if (!classId) {
+    return NextResponse.json({ error: 'classId is required' }, { status: 400 });
+  }
+
+  // หา subject ที่ครูสอน
+  const { data: teacherSubjectRaw, error: tsError } = await supabase
+    .from('teacher_subjects')
+    .select('subject_id')
+    .eq('teacher_id', user.id)
+    .single();
+
+  if (tsError || !teacherSubjectRaw) {
+    return NextResponse.json(
+      { error: 'คุณยังไม่ได้รับมอบหมายให้สอนวิชาใด' },
+      { status: 400 }
+    );
+  }
+  const subjectId: string = (teacherSubjectRaw as { subject_id: string }).subject_id;
+
+  // (ออปชันแนะนำ) ตรวจว่านักเรียนทั้งหมดอยู่ในห้อง classId จริง
+  const { data: studsRaw, error: scError } = await supabase
+    .from('student_classes')
+    .select('student_id')
+    .eq('class_id', classId);
+
+  if (scError) {
+    return NextResponse.json({ error: scError.message }, { status: 500 });
+  }
+  const allowed = new Set((studsRaw ?? []).map((r: { student_id: string }) => r.student_id));
+  const invalid = grades.find((g) => !allowed.has(g.studentId));
+  if (invalid) {
+    return NextResponse.json({ error: 'พบรหัสนักเรียนที่ไม่ได้อยู่ในห้องนี้' }, { status: 400 });
+  }
+
+  // ✅ ใส่ class_id และ teacher_id ให้ครบเพื่อเลี่ยง NOT NULL
+  const rows = grades.map((g) => ({
+    student_id: g.studentId,
+    subject_id: subjectId,
+    class_id: classId,
+    score: g.score,
+    grade: g.grade == null ? null : Number(g.grade),
+    teacher_id: user.id,
+  }));
+
+  // ถ้าคีย์ unique เป็น (student_id, subject_id, class_id) ให้ระบุแบบนี้
+  const { error } = await supabase
+    .from('grades')
+    .upsert(rows, { onConflict: 'student_id,subject_id,class_id' });
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+  return NextResponse.json({ ok: true });
 }

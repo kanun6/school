@@ -7,7 +7,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
-  const publicRoutes = ['/', '/signin', '/signup'];
+  const publicRoutes = ['/', '/signin', '/signup' , '/about' ,'/contact' ,'/services' , '/services/courses' , '/services/staff' ,'/services/class-students'];
   const isPublicRoute = publicRoutes.includes(pathname);
 
   // If not logged in and trying to access a protected route, redirect to signin
