@@ -68,7 +68,9 @@ export async function GET(request: Request) {
             gpa
         });
 
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (err: unknown) {
+    // ตรวจสอบชนิด error อย่างปลอดภัย
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
     }
 }
