@@ -1,46 +1,65 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, User } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 
+// สร้าง interface ขยายเองที่เพิ่ม field banned_until
+interface UserWithBan extends User {
+  banned_until?: string | null;
+}
+
 async function isAdmin(): Promise<boolean> {
-    const supabase = createSupabaseServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return false;
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-    return profile?.role === 'admin';
+  const supabase = createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+  return profile?.role === 'admin';
 }
 
 export async function GET() {
-  if (!(await isAdmin())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!(await isAdmin()))
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   try {
-    const { data: { users }, error: usersError } = await supabaseAdmin.auth.admin.listUsers();
+    const {
+      data: { users },
+      error: usersError,
+    } = await supabaseAdmin.auth.admin.listUsers();
     if (usersError) throw usersError;
 
-    const userIds = users.map(user => user.id);
+    const userIds = users.map((user) => user.id);
     const [profilesRes, teacherSubjectsRes, studentClassesRes] = await Promise.all([
-        supabaseAdmin.from('profiles').select('*').in('id', userIds),
-        supabaseAdmin.from('teacher_subjects').select('*').in('teacher_id', userIds),
-        supabaseAdmin.from('student_classes').select('*').in('student_id', userIds)
+      supabaseAdmin.from('profiles').select('*').in('id', userIds),
+      supabaseAdmin.from('teacher_subjects').select('*').in('teacher_id', userIds),
+      supabaseAdmin.from('student_classes').select('*').in('student_id', userIds),
     ]);
 
     if (profilesRes.error) throw profilesRes.error;
     if (teacherSubjectsRes.error) throw teacherSubjectsRes.error;
     if (studentClassesRes.error) throw studentClassesRes.error;
 
-    const managedUsers = users.map(user => {
-      const profile = profilesRes.data.find(p => p.id === user.id);
-      const assignment = teacherSubjectsRes.data.find(ts => ts.teacher_id === user.id);
-      const classAssignment = studentClassesRes.data.find(sc => sc.student_id === user.id);
+    const managedUsers = users.map((user) => {
+      const profile = profilesRes.data.find((p) => p.id === user.id);
+      const assignment = teacherSubjectsRes.data.find((ts) => ts.teacher_id === user.id);
+      const classAssignment = studentClassesRes.data.find((sc) => sc.student_id === user.id);
+
+      // cast user เป็น UserWithBan เพื่อใช้ banned_until ได้
+      const userWithBan = user as UserWithBan;
+
       return {
         id: user.id,
         first_name: profile?.first_name || '',
         last_name: profile?.last_name || '',
         role: profile?.role || 'student',
         email: user.email || '',
-        banned_until: user.banned_until,
+        banned_until: userWithBan.banned_until ?? null,
         subject_id: assignment?.subject_id || null,
         class_id: classAssignment?.class_id || null,
       };
@@ -48,7 +67,8 @@ export async function GET() {
 
     return NextResponse.json(managedUsers);
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+    const errorMessage =
+      error instanceof Error ? error.message : 'An unknown error occurred';
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
