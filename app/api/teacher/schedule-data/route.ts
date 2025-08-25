@@ -38,8 +38,7 @@ export async function GET(request: Request) {
             allClasses: allClassesRes.data,
             mySubjectName: teacherSubjectRes.data.subject.name
         });
-
-} catch (err: unknown) {
+    } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
