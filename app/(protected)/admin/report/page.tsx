@@ -1,20 +1,29 @@
 'use client';
 
 import { useState, useEffect } from "react";
-import { Issue, IssueStatus } from "@/lib/types";
+import { Issue } from "@/lib/types";
 import { createClient } from "@/lib/supabase/client";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useModal } from "@/contexts/ModalContext"; // Import useModal
 
-const StatusBadge = ({ status }: { status: string }) => {
-    const colorClasses = {
-        'ใหม่': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-        'กำลังดำเนินการ': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
-        'แก้ไขแล้ว': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
-    };
-    return <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${colorClasses[status] || 'bg-gray-100 text-gray-800'}`}>{status}</span>;
-}
+type IssueStatus = 'ใหม่' | 'กำลังดำเนินการ' | 'แก้ไขแล้ว';
+
+const statusColors: Record<IssueStatus, string> = {
+  'ใหม่': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
+  'กำลังดำเนินการ': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
+  'แก้ไขแล้ว': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+};
+
+const StatusBadge = ({ status }: { status: IssueStatus }) => {
+  const colorClass = statusColors[status] ?? 'bg-gray-100 text-gray-800';
+  return (
+    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${colorClass}`}>
+      {status}
+    </span>
+  );
+};
+
 
 
 export default function ReportPage() {
