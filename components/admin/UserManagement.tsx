@@ -20,13 +20,15 @@ type UpdateUserPayload = Partial<{
   // auth (admin API)
   ban_duration: BanDuration;
 }>;
-
-/** props type for handleUpdateUser */
 type UpdateUserFn = (userId: string, updates: UpdateUserPayload) => void | Promise<void>;
 type BanUserFn = (userId: string, userEmail?: string) => void | Promise<void>;
 type UnbanUserFn = (userId: string, userEmail?: string) => void | Promise<void>;
 
-/** ----- User Table (reusable) ----- **/
+/** ---- grouping types/consts for class sections ---- */
+const UNASSIGNED = 'UNASSIGNED' as const;
+type ClassKey = string | typeof UNASSIGNED;
+
+/** ----- Reusable User Table ----- **/
 const UserTable = ({
   users,
   subjects,
@@ -79,10 +81,8 @@ const UserTable = ({
             const isBanned =
               !!user.banned_until && new Date(user.banned_until) > new Date();
 
-            // เปลี่ยน Role แล้วล้างฟิลด์ที่ไม่เกี่ยวข้อง
             const onChangeRole = (newRole: RoleUnion) => {
               const updates: UpdateUserPayload = { role: newRole };
-
               if (newRole === 'admin') {
                 updates.subject_id = null;
                 updates.class_id = null;
@@ -91,7 +91,6 @@ const UserTable = ({
               } else if (newRole === 'student') {
                 updates.subject_id = null;
               }
-
               handleUpdateUser(user.id, updates);
             };
 
@@ -267,7 +266,57 @@ export default function UserManagement() {
     };
   }, [users]);
 
-  /** ใช้กับการอัปเดตทั่วไป (role/assignment) */
+  /** จัดกลุ่มนักเรียนตามห้อง/ชั้น */
+  const { studentsByClass, classOrder, classNameMap } = useMemo(() => {
+    const byClass: Record<ClassKey, ManagedUser[]> = {};
+    const nameMap: Record<string, string> = {};
+
+    classes
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .forEach((c) => {
+        nameMap[c.id] = c.name;
+      });
+
+    students.forEach((s) => {
+      const key: ClassKey = s.class_id ?? UNASSIGNED;
+      if (!byClass[key]) byClass[key] = [];
+      byClass[key].push(s);
+    });
+
+    const order: ClassKey[] = Object.keys(byClass)
+      .filter((k) => k !== UNASSIGNED)
+      .sort((a, b) => (nameMap[a as string] || '').localeCompare(nameMap[b as string] || '')) as ClassKey[];
+
+    if (byClass[UNASSIGNED]?.length) order.push(UNASSIGNED);
+
+    const map: Record<ClassKey, string> = { [UNASSIGNED]: 'Unassigned', ...nameMap };
+
+    return {
+      studentsByClass: byClass,
+      classOrder: order,
+      classNameMap: map,
+    };
+  }, [students, classes]);
+
+  /** เปิด/ปิด section แต่ละห้องของนักเรียน */
+  const [openSections, setOpenSections] = useState<Record<ClassKey, boolean>>({});
+  useEffect(() => {
+    const initial: Record<ClassKey, boolean> = {};
+    classOrder.forEach((id) => {
+      initial[id] = true;
+    });
+    setOpenSections(initial);
+  }, [classOrder]); // ✅ ถูกต้องตาม ESLint
+
+  const toggleOpen = (id: ClassKey) =>
+    setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  /** Hide/Show สำหรับ Admin และ Teacher */
+  const [openAdmins, setOpenAdmins] = useState(true);
+  const [openTeachers, setOpenTeachers] = useState(true);
+
+  /** อัปเดตข้อมูลผู้ใช้ */
   const handleUpdateUser: UpdateUserFn = async (userId, updates) => {
     setUpdating(userId);
     setError('');
@@ -282,26 +331,16 @@ export default function UserManagement() {
         throw new Error(errorData.error || 'Failed to update user.');
       }
       await fetchData();
-
-      // ✅ SUCCESS: อย่าส่ง type: 'success' เพราะ type รองรับแค่ 'alert' | 'confirm'
-      await showAlert({
-        title: 'อัปเดตสำเร็จ',
-        message: 'บันทึกข้อมูลผู้ใช้เรียบร้อยแล้ว',
-        // type: undefined  (ละไว้)
-      });
+      await showAlert({ title: 'อัปเดตสำเร็จ', message: 'บันทึกข้อมูลผู้ใช้เรียบร้อยแล้ว' });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'An unknown error occurred';
-      await showAlert({
-        title: 'เกิดข้อผิดพลาด',
-        message: msg,
-        type: 'alert',
-      });
+      await showAlert({ title: 'เกิดข้อผิดพลาด', message: msg, type: 'alert' });
     } finally {
       setUpdating(null);
     }
   };
 
-  /** ✅ Ban (มี confirm + alert) */
+  /** Ban / Unban / Delete */
   const handleBanUser: BanUserFn = async (userId, userEmail) => {
     const confirmed = await showConfirm({
       title: 'ยืนยันการแบน',
@@ -319,24 +358,15 @@ export default function UserManagement() {
       });
       if (!response.ok) throw new Error('Failed to ban user.');
       await fetchData();
-      await showAlert({
-        title: 'สำเร็จ',
-        message: `${userEmail ?? 'ผู้ใช้'} ถูกแบนเรียบร้อยแล้ว (24 ชั่วโมง)`,
-        // ไม่ส่ง type
-      });
+      await showAlert({ title: 'สำเร็จ', message: `${userEmail ?? 'ผู้ใช้'} ถูกแบนเรียบร้อยแล้ว (24 ชั่วโมง)` });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'An unknown error occurred';
-      await showAlert({
-        title: 'เกิดข้อผิดพลาด',
-        message: msg,
-        type: 'alert',
-      });
+      await showAlert({ title: 'เกิดข้อผิดพลาด', message: msg, type: 'alert' });
     } finally {
       setUpdating(null);
     }
   };
 
-  /** ✅ Unban (มี confirm + alert) */
   const handleUnbanUser: UnbanUserFn = async (userId, userEmail) => {
     const confirmed = await showConfirm({
       title: 'ยืนยันการยกเลิกแบน',
@@ -354,18 +384,10 @@ export default function UserManagement() {
       });
       if (!response.ok) throw new Error('Failed to unban user.');
       await fetchData();
-      await showAlert({
-        title: 'สำเร็จ',
-        message: `${userEmail ?? 'ผู้ใช้'} ถูกยกเลิกการแบนแล้ว`,
-        // ไม่ส่ง type
-      });
+      await showAlert({ title: 'สำเร็จ', message: `${userEmail ?? 'ผู้ใช้'} ถูกยกเลิกการแบนแล้ว` });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'An unknown error occurred';
-      await showAlert({
-        title: 'เกิดข้อผิดพลาด',
-        message: msg,
-        type: 'alert',
-      });
+      await showAlert({ title: 'เกิดข้อผิดพลาด', message: msg, type: 'alert' });
     } finally {
       setUpdating(null);
     }
@@ -377,7 +399,6 @@ export default function UserManagement() {
       message: `คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้ ${userEmail} แบบถาวร?`,
       confirmText: 'ลบ',
     });
-
     if (!confirmed) return;
 
     setUpdating(userId);
@@ -389,28 +410,16 @@ export default function UserManagement() {
       });
       if (!response.ok) throw new Error('Failed to delete user.');
       setUsers((prev) => prev.filter((u) => u.id !== userId));
-
-      await showAlert({
-        title: 'สำเร็จ',
-        message: `ลบผู้ใช้ ${userEmail} เรียบร้อยแล้ว`,
-        // ไม่ส่ง type
-      });
+      await showAlert({ title: 'สำเร็จ', message: `ลบผู้ใช้ ${userEmail} เรียบร้อยแล้ว` });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'An unknown error occurred';
-      await showAlert({
-        title: 'เกิดข้อผิดพลาด',
-        message,
-        type: 'alert',
-      });
+      await showAlert({ title: 'เกิดข้อผิดพลาด', message, type: 'alert' });
     } finally {
       setUpdating(null);
     }
   };
 
-  const handleSaveProfile = async (
-    userId: string,
-    updates: { first_name: string; last_name: string }
-  ) => {
+  const handleSaveProfile = async (userId: string, updates: { first_name: string; last_name: string }) => {
     await handleUpdateUser(userId, updates);
   };
 
@@ -428,64 +437,118 @@ export default function UserManagement() {
       )}
 
       <div className="space-y-8">
-        <div>
-          <h3 className="text-xl font-semibold mb-2">Administrators</h3>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-            <UserTable
-              users={admins}
-              role="admin"
-              {...{
-                subjects,
-                classes,
-                handleUpdateUser,
-                handleDeleteUser,
-                handleBanUser,
-                handleUnbanUser,
-                setEditingUser,
-                updating,
-              }}
-            />
-          </div>
+        <h3 className="text-xl font-semibold mb-2">Administrators</h3>
+        {/* Admins (collapsible) */}
+        <div className="mb-2 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setOpenAdmins((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-gray-100 dark:bg-gray-800 text-left"
+          >
+            <span className="font-semibold text-gray-900 dark:text-gray-100">
+              Admin ({admins.length})
+            </span>
+            <span className="text-sm text-gray-600 dark:text-gray-300">{openAdmins ? 'Hide' : 'Show'}</span>
+          </button>
+          {openAdmins && (
+            <div className="bg-white dark:bg-gray-800 rounded-b-lg shadow-md overflow-hidden">
+              <UserTable
+                users={admins}
+                role="admin"
+                {...{
+                  subjects,
+                  classes,
+                  handleUpdateUser,
+                  handleDeleteUser,
+                  handleBanUser,
+                  handleUnbanUser,
+                  setEditingUser,
+                  updating,
+                }}
+              />
+            </div>
+          )}
         </div>
 
-        <div>
-          <h3 className="text-xl font-semibold mb-2">Teachers</h3>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-            <UserTable
-              users={teachers}
-              role="teacher"
-              {...{
-                subjects,
-                classes,
-                handleUpdateUser,
-                handleDeleteUser,
-                handleBanUser,
-                handleUnbanUser,
-                setEditingUser,
-                updating,
-              }}
-            />
-          </div>
+        {/* Teachers (collapsible) */}
+        <h3 className="text-xl font-semibold mb-2">Teachers</h3>
+        <div className="mb-2 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setOpenTeachers((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-gray-100 dark:bg-gray-800 text-left"
+          >
+            <span className="font-semibold text-gray-900 dark:text-gray-100">
+              Teachers ({teachers.length})
+            </span>
+            <span className="text-sm text-gray-600 dark:text-gray-300">{openTeachers ? 'Hide' : 'Show'}</span>
+          </button>
+          {openTeachers && (
+            <div className="bg-white dark:bg-gray-800 rounded-b-lg shadow-md overflow-hidden">
+              <UserTable
+                users={teachers}
+                role="teacher"
+                {...{
+                  subjects,
+                  classes,
+                  handleUpdateUser,
+                  handleDeleteUser,
+                  handleBanUser,
+                  handleUnbanUser,
+                  setEditingUser,
+                  updating,
+                }}
+              />
+            </div>
+          )}
         </div>
 
+        {/* Students grouped by class (collapsible per class) */}
         <div>
           <h3 className="text-xl font-semibold mb-2">Students</h3>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
-            <UserTable
-              users={students}
-              role="student"
-              {...{
-                subjects,
-                classes,
-                handleUpdateUser,
-                handleDeleteUser,
-                handleBanUser,
-                handleUnbanUser,
-                setEditingUser,
-                updating,
-              }}
-            />
-          </div>
+
+          {classOrder.map((classId) => {
+            const list = studentsByClass[classId] || [];
+            if (list.length === 0) return null;
+
+            const title =
+              classId === UNASSIGNED
+                ? `${classNameMap[UNASSIGNED]} (${list.length})`
+                : `${classNameMap[classId] ?? 'Unknown'} (${list.length})`;
+
+            const open = openSections[classId] ?? true;
+
+            return (
+              <div key={classId} className="mb-4 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                {/* Section Header */}
+                <button
+                  onClick={() => toggleOpen(classId)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-gray-100 dark:bg-gray-800 text-left"
+                >
+                  <span className="font-semibold text-gray-900 dark:text-gray-100">{title}</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-300">{open ? 'Hide' : 'Show'}</span>
+                </button>
+
+                {/* Section Body */}
+                {open && (
+                  <div className="bg-white dark:bg-gray-800 rounded-b-lg shadow-sm overflow-hidden">
+                    <UserTable
+                      users={list}
+                      role="student"
+                      {...{
+                        subjects,
+                        classes,
+                        handleUpdateUser,
+                        handleDeleteUser,
+                        handleBanUser,
+                        handleUnbanUser,
+                        setEditingUser,
+                        updating,
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </>
