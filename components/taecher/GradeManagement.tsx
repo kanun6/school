@@ -1,48 +1,120 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { v4 as uuidv4 } from "uuid";
 import { calculateGrade } from "@/lib/utils";
 import { useModal } from "@/contexts/ModalContext";
 
+/* ===================== Types ===================== */
 interface ClassData {
   id: string;
   name: string;
 }
-interface StudentData {
+
+interface ComponentItem {
+  id: string;      // component id (server id หรือ temp-uuid)
+  name: string;
+  max: number;     // คะแนนเต็มของช่องนี้
+  position: number;
+}
+
+interface StudentRow {
   id: string;
   first_name: string;
   last_name: string;
-  score: number | null;
+  componentScores: Record<string, number | null>; // key = componentId
+  total: number;
+  grade: string | null;
 }
 
+interface SchemeResponse {
+  id: string;
+  components: ComponentItem[];
+}
+
+interface GetClassListResponse {
+  classes: ClassData[];
+  subjectName: string;
+}
+
+interface GetClassDataResponse {
+  scheme: SchemeResponse | null;
+  students: StudentRow[];
+  subjectName: string;
+}
+
+/* ===================== Component ===================== */
 export default function GradeManagement() {
-  const [classes, setClasses] = useState<ClassData[]>([]);
-  const [selectedClass, setSelectedClass] = useState<string>("");
-  const [students, setStudents] = useState<StudentData[]>([]);
-  const [subjectName, setSubjectName] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState("");
   const { showAlert } = useModal();
 
-  const fetchStudents = useCallback(
+  // ทำให้ showAlert มี reference คงที่ ใช้ใน useEffect([])
+  const showAlertRef = useRef(showAlert);
+  useEffect(() => {
+    showAlertRef.current = showAlert;
+  }, [showAlert]);
+
+  const [classes, setClasses] = useState<ClassData[]>([]);
+  const [selectedClass, setSelectedClass] = useState<string>("");
+
+  const [subjectName, setSubjectName] = useState<string>("");
+
+  const [schemeId, setSchemeId] = useState<string | null>(null);
+  const [components, setComponents] = useState<ComponentItem[]>([]);
+
+  const [students, setStudents] = useState<StudentRow[]>([]);
+
+  const [loading, setLoading] = useState<boolean>(true);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [error, setError] = useState<string>("");
+
+  /* -------- Fetch classes once -------- */
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/teacher/grades?getClasses=true", { credentials: "include" });
+        if (!res.ok) throw new Error("Failed to fetch classes");
+        const data: GetClassListResponse = await res.json();
+
+        setClasses(data.classes ?? []);
+        setSubjectName(data.subjectName ?? "");
+        if ((data.classes ?? []).length > 0) {
+          setSelectedClass(data.classes[0].id);
+        } else {
+          setLoading(false);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "An unknown error occurred";
+        setError(msg);
+        await showAlertRef.current({ title: "เกิดข้อผิดพลาด", message: msg, type: "alert" });
+        setLoading(false);
+      }
+    })();
+  }, []); // ขนาด deps คงที่เสมอ
+
+  /* -------- Fetch students + scheme when class changes -------- */
+  const fetchStudentsAndScheme = useCallback(
     async (classId: string) => {
       setLoading(true);
       setError("");
       try {
-        const res = await fetch(`/api/teacher/grades?classId=${classId}`);
+        const res = await fetch(`/api/teacher/grades?classId=${classId}`, { credentials: "include" });
         if (!res.ok) {
-          const errorData = await res.json();
-          throw new Error(errorData.error || "Failed to fetch students");
+          const e = (await res.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(e?.error || "Failed to fetch");
         }
-        const data = await res.json();
-        setStudents(data.students);
-      } catch (err: unknown) {
-        const message =
-          err instanceof Error ? err.message : "An unknown error occurred";
-        setError(message);
-        await showAlert({ title: "เกิดข้อผิดพลาด", message, type: "alert" });
+        const data: GetClassDataResponse = await res.json();
+
+        setSubjectName(data.subjectName ?? "");
+        setSchemeId(data.scheme?.id ?? null);
+        setComponents(data.scheme?.components ?? []);
+        setStudents(data.students ?? []);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "An unknown error occurred";
+        setError(msg);
+        await showAlert({ title: "เกิดข้อผิดพลาด", message: msg, type: "alert" });
         setStudents([]);
+        setComponents([]);
+        setSchemeId(null);
       } finally {
         setLoading(false);
       }
@@ -50,172 +122,299 @@ export default function GradeManagement() {
     [showAlert]
   );
 
-  // Fetch classes the teacher teaches ONCE on mount
   useEffect(() => {
-    const fetchClasses = async () => {
-      try {
-        const res = await fetch("/api/teacher/grades?getClasses=true");
-        if (!res.ok) throw new Error("Failed to fetch classes");
-        const data = await res.json();
-        setClasses(data.classes);
-        setSubjectName(data.subjectName);
-        if (data.classes.length > 0) {
-          // Set the initial class. This will only run once.
-          setSelectedClass(data.classes[0].id);
-        } else {
-          setLoading(false);
-        }
-      } catch (err: unknown) {
-        const message =
-          err instanceof Error ? err.message : "An unknown error occurred";
-        setError(message);
-        await showAlert({ title: "เกิดข้อผิดพลาด", message, type: "alert" });
-        setLoading(false);
-      }
-    };
-    fetchClasses();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Use an empty dependency array to ensure this runs only once.
+    if (selectedClass) void fetchStudentsAndScheme(selectedClass);
+  }, [selectedClass, fetchStudentsAndScheme]);
 
-  // Fetch students when a class is selected
-  useEffect(() => {
-    if (selectedClass) {
-      fetchStudents(selectedClass);
-    }
-  }, [selectedClass, fetchStudents]);
-
-  const handleScoreChange = (studentId: string, score: string) => {
-    const newScore = score === "" ? null : parseInt(score, 10);
-    if (
-      newScore !== null &&
-      (isNaN(newScore) || newScore < 0 || newScore > 100)
-    )
-      return;
+  /* -------- Component (scheme) editor -------- */
+  const addComponent = () => {
+    const tempId = `temp-${uuidv4()}`;
+    setComponents((prev) => [
+      ...prev,
+      { id: tempId, name: "ช่องใหม่", max: 10, position: prev.length },
+    ]);
     setStudents((prev) =>
-      prev.map((student) =>
-        student.id === studentId ? { ...student, score: newScore } : student
+      prev.map((s) => ({
+        ...s,
+        componentScores: { ...s.componentScores, [tempId]: null },
+      }))
+    );
+  };
+
+  const removeComponent = (compId: string) => {
+    setComponents((prev) => prev.filter((c) => c.id !== compId));
+    setStudents((prev) =>
+      prev.map((s) => {
+        const cp = { ...s.componentScores };
+        delete cp[compId];
+        return { ...s, componentScores: cp };
+      })
+    );
+  };
+
+  const updateComponentName = (compId: string, name: string) => {
+    setComponents((prev) => prev.map((c) => (c.id === compId ? { ...c, name } : c)));
+  };
+
+  const updateComponentMax = (compId: string, maxStr: string) => {
+    const n = maxStr === "" ? NaN : parseInt(maxStr, 10);
+    setComponents((prev) =>
+      prev.map((c) =>
+        c.id === compId
+          ? { ...c, max: isNaN(n) || n <= 0 ? c.max : Math.floor(n) }
+          : c
       )
     );
   };
 
-  const handleSaveChanges = async () => {
+  /* -------- Score editing -------- */
+  const handleScoreChange = (studentId: string, compId: string, value: string, max: number) => {
+    const parsed = value === "" ? null : parseInt(value, 10);
+    if (parsed !== null) {
+      if (Number.isNaN(parsed) || parsed < 0) return;
+      if (parsed > max) return;
+    }
+
+    setStudents((prev) =>
+      prev.map((s) => {
+        if (s.id !== studentId) return s;
+        const next: Record<string, number | null> = { ...(s.componentScores || {}) };
+        next[compId] = parsed;
+        const total = components.reduce<number>((sum, comp) => sum + (next[comp.id] ?? 0), 0);
+        return { ...s, componentScores: next, total, grade: calculateGrade(total) };
+      })
+    );
+  };
+
+  const anyOver100 = useMemo<boolean>(
+    () => students.some((s) => (s.total ?? 0) > 100),
+    [students]
+  );
+
+  /* -------- Save -------- */
+  const handleSave = async () => {
+    if (!selectedClass) return;
+
+    if (anyOver100) {
+      await showAlert({
+        title: "คะแนนรวมเกิน 100",
+        message: "โปรดปรับคะแนนให้รวมต่อคนไม่เกิน 100 ก่อนบันทึก",
+        type: "alert",
+      });
+      return;
+    }
+
     setIsSaving(true);
     setError("");
     try {
-      const gradesToSave = students.map((s) => ({
+      const schemePayload: {
+        id?: string;
+        components: { id?: string; name: string; max: number; position: number }[];
+      } = {
+        id: schemeId ?? undefined,
+        components: components.map((c, idx) => ({
+          id: c.id.startsWith("temp-") ? undefined : c.id,
+          name: c.name.trim() || "ช่อง",
+          max: c.max,
+          position: idx,
+        })),
+      };
+
+      const gradesPayload: {
+        studentId: string;
+        components: { itemId: string; score: number | null }[];
+      }[] = students.map((s) => ({
         studentId: s.id,
-        score: s.score,
-        grade: calculateGrade(s.score),
+        components: components.map((c) => ({
+          // temp id จะถูกละทิ้งตอนสร้าง component ใหม่ฝั่ง server จากนั้น reload จะได้ id จริงกลับมา
+          itemId: c.id,
+          score: s.componentScores[c.id] ?? null,
+        })),
       }));
 
       const res = await fetch("/api/teacher/grades", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ classId: selectedClass, grades: gradesToSave }),
+        credentials: "include",
+        body: JSON.stringify({
+          classId: selectedClass,
+          scheme: schemePayload,
+          grades: gradesPayload,
+        }),
       });
 
       if (!res.ok) {
-        // พยายามอ่าน JSON ก่อน ถ้าไม่ได้ค่อยอ่านเป็น text
-        let msg = "Failed to save grades";
-        try {
-          const j = await res.json();
-          if (j?.error) msg = j.error;
-        } catch {
-          const t = await res.text();
-          if (t) msg = t;
-        }
-        throw new Error(msg);
+        const j = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(j?.error || "Failed to save");
       }
 
       await showAlert({ title: "สำเร็จ", message: "บันทึกคะแนนเรียบร้อยแล้ว" });
-      await fetchStudents(selectedClass);
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "An unknown error occurred";
-      setError(message);
-      await showAlert({ title: "เกิดข้อผิดพลาด", message, type: "alert" });
+      // reload เพื่อดึง component id จริงแทน temp-*
+      await fetchStudentsAndScheme(selectedClass);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setError(msg);
+      await showAlert({ title: "เกิดข้อผิดพลาด", message: msg, type: "alert" });
     } finally {
       setIsSaving(false);
     }
   };
 
+  /* ===================== UI ===================== */
   return (
     <div>
+      {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-3xl font-bold">บันทึกผลการเรียน</h1>
-          <p className="mt-1 text-gray-500 dark:text-gray-400">
-            วิชา:{" "}
-            <span className="font-semibold">{subjectName || "Loading..."}</span>
-          </p>
         </div>
-        {classes.length > 0 && (
-          <select
-            value={selectedClass}
-            onChange={(e) => setSelectedClass(e.target.value)}
-            className="select-field max-w-xs"
-          >
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        )}
+        <div className="text-right">
+          <p className="mt-1 text-gray-500 dark:text-gray-400">
+            วิชา: <span className="font-semibold">{subjectName || "Loading..."}</span>
+          </p>
+          {classes.length > 0 && (
+            <select
+              value={selectedClass}
+              onChange={(e) => setSelectedClass(e.target.value)}
+              className="select-field max-w-xs mt-2"
+            >
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
 
       {error && !loading && (
         <p className="text-red-500 mb-4 text-center">{error}</p>
       )}
 
-      <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden">
+      {/* Scheme Builder */}
+      <div className="mb-4 bg-white dark:bg-gray-800 shadow-md rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold text-lg">กำหนดส่วนคะแนน</h2>
+          <button
+            onClick={addComponent}
+            className="bg-emerald-600 text-white px-4 py-2 rounded-md hover:bg-emerald-700"
+          >
+            เพิ่มช่องคะแนน
+          </button>
+        </div>
+
+        {components.length === 0 ? (
+          <p className="text-gray-500 mt-3">ยังไม่มีช่องคะแนน — กด “เพิ่มช่องคะแนน”</p>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-100 dark:bg-gray-700">
+                <tr>
+                  <th className="px-4 py-2 text-left">ชื่อช่อง</th>
+                  <th className="px-4 py-2 text-left">คะแนนเต็ม</th>
+                  <th className="px-4 py-2 text-left"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {components.map((c) => (
+                  <tr key={c.id} className="border-b border-gray-200 dark:border-gray-600">
+                    <td className="px-4 py-2">
+                      <input
+                        className="input-field w-full"
+                        value={c.name}
+                        onChange={(e) => updateComponentName(c.id, e.target.value)}
+                      />
+                    </td>
+                    <td className="px-4 py-2">
+                      <input
+                        className="input-field w-28"
+                        type="number"
+                        min={1}
+                        value={c.max}
+                        onChange={(e) => updateComponentMax(c.id, e.target.value)}
+                      />
+                    </td>
+                    <td className="px-4 py-2">
+                      <button
+                        onClick={() => removeComponent(c.id)}
+                        className="text-red-600 hover:underline"
+                      >
+                        ลบช่องนี้
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Scores Table */}
+      <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-x-auto">
         <table className="min-w-full">
           <thead className="bg-gray-100 dark:bg-gray-700">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                 ชื่อ - สกุล
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
-                คะแนน (0-100)
+              {components.map((c) => (
+                <th
+                  key={c.id}
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap"
+                >
+                  {c.name} (เต็ม {c.max})
+                </th>
+              ))}
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                รวม (≤100)
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                 เกรด
               </th>
             </tr>
           </thead>
+
           <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
             {loading ? (
               <tr>
-                <td colSpan={3} className="text-center py-4">
+                <td colSpan={2 + components.length} className="text-center py-4">
                   Loading students...
                 </td>
               </tr>
             ) : students.length > 0 ? (
-              students.map((student) => (
-                <tr key={student.id}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {student.first_name} {student.last_name}
-                  </td>
-                  <td className="px-6 py-4">
-                    <input
-                      type="number"
-                      value={student.score ?? ""}
-                      onChange={(e) =>
-                        handleScoreChange(student.id, e.target.value)
-                      }
-                      className="input-field w-full"
-                      min="0"
-                      max="100"
-                    />
-                  </td>
-                  <td className="px-6 py-4 font-bold text-lg">
-                    {calculateGrade(student.score)}
-                  </td>
-                </tr>
-              ))
+              students.map((s) => {
+                const over = (s.total ?? 0) > 100;
+                return (
+                  <tr key={s.id} className={over ? "bg-red-50 dark:bg-red-900/20" : ""}>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {s.first_name} {s.last_name}
+                    </td>
+                    {components.map((c) => (
+                      <td key={c.id} className="px-6 py-4">
+                        <input
+                          type="number"
+                          className="input-field w-28"
+                          min={0}
+                          max={c.max}
+                          value={s.componentScores?.[c.id] ?? ""}
+                          onChange={(e) => handleScoreChange(s.id, c.id, e.target.value, c.max)}
+                          placeholder={`0-${c.max}`}
+                        />
+                      </td>
+                    ))}
+                    <td className="px-6 py-4 font-semibold">
+                      <span className={over ? "text-red-600" : ""}>{s.total ?? 0}</span>
+                      {over && <span className="ml-2 text-xs text-red-500">(เกิน 100)</span>}
+                    </td>
+                    <td className="px-6 py-4 font-bold text-lg">{s.grade ?? "-"}</td>
+                  </tr>
+                );
+              })
             ) : (
               <tr>
-                <td colSpan={3} className="text-center py-4 text-gray-500">
+                <td colSpan={2 + components.length} className="text-center py-4 text-gray-500">
                   ไม่พบนักเรียนในห้องนี้ หรือยังไม่มีการสอนในห้องนี้
                 </td>
               </tr>
@@ -224,11 +423,17 @@ export default function GradeManagement() {
         </table>
       </div>
 
+      {/* Save */}
       {students.length > 0 && (
-        <div className="mt-6 flex justify-end">
+        <div className="mt-6 flex justify-end items-center gap-4">
+          {anyOver100 && (
+            <p className="text-red-600 text-sm">
+              มีผู้เรียนที่คะแนนรวมเกิน 100 — โปรดแก้ไขก่อนบันทึก
+            </p>
+          )}
           <button
-            onClick={handleSaveChanges}
-            disabled={isSaving}
+            onClick={handleSave}
+            disabled={isSaving || anyOver100}
             className="bg-blue-600 text-white py-2 px-6 rounded-md hover:bg-blue-700 disabled:bg-blue-400"
           >
             {isSaving ? "กำลังบันทึก..." : "บันทึกคะแนน"}

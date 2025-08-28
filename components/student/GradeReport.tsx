@@ -2,10 +2,19 @@
 
 import { useState, useEffect } from 'react';
 
+interface ComponentItem {
+  id: string;
+  name: string;
+  max: number;
+  score: number | null;
+}
+
 interface GradeData {
+  subject_id: string;
   subject_name: string;
   score: number | null;
   grade: string | null;
+  components: ComponentItem[];
 }
 
 interface GradeReportData {
@@ -16,72 +25,145 @@ interface GradeReportData {
 }
 
 export default function GradeReport() {
-    const [reportData, setReportData] = useState<GradeReportData | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+  const [reportData, setReportData] = useState<GradeReportData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
 
-    useEffect(() => {
-        const fetchGradeReport = async () => {
-            try {
-                setLoading(true);
-                const res = await fetch('/api/student/grades');
-                if (!res.ok) {
-                    const errorData = await res.json();
-                    throw new Error(errorData.error || 'Failed to fetch grade report');
-                }
-                const data = await res.json();
-                setReportData(data);
-            } catch (err: unknown) {
-                if (err instanceof Error) {
-                    setError(err.message);
-                } else {
-                    setError("An unknown error occurred");
-                }
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchGradeReport();
-    }, []);
+  useEffect(() => {
+    const fetchGradeReport = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch('/api/student/grades');
+        if (!res.ok) {
+          let msg = 'Failed to fetch grade report';
+          try {
+            const j = await res.json();
+            if (j?.error) msg = j.error;
+          } catch {
+            const t = await res.text();
+            if (t) msg = t;
+          }
+          throw new Error(msg);
+        }
+        const data: GradeReportData = await res.json();
+        setReportData(data);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchGradeReport();
+  }, []);
 
-    if (loading) return <p className="text-center">กำลังโหลดข้อมูลผลการเรียน...</p>;
-    if (error) return <p className="text-center text-red-500 font-semibold">{error}</p>;
-    if (!reportData) return <p className="text-center">ไม่พบข้อมูลผลการเรียน</p>;
+  if (loading) return <p className="text-center">กำลังโหลดข้อมูลผลการเรียน...</p>;
+  if (error) return <p className="text-center text-red-500 font-semibold">{error}</p>;
+  if (!reportData) return <p className="text-center">ไม่พบข้อมูลผลการเรียน</p>;
 
-    return (
-        <div>
-            <div className="text-center mb-6">
-                <h1 className="text-3xl font-bold">รายงานผลการเรียน</h1>
-                <p className="mt-2 text-lg text-gray-600 dark:text-gray-400">
-                    {reportData.studentName} - ห้อง {reportData.className}
-                </p>
-            </div>
-            <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden max-w-4xl mx-auto">
+  return (
+    <div>
+      <div className="text-center mb-6">
+        <h1 className="text-3xl font-bold">รายงานผลการเรียน</h1>
+        <p className="mt-2 text-lg text-gray-600 dark:text-gray-400">
+          {reportData.studentName} - ห้อง {reportData.className}
+        </p>
+      </div>
+
+      <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden max-w-4xl mx-auto">
+        <table className="min-w-full">
+          <thead className="bg-gray-100 dark:bg-gray-700">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                รายวิชา
+              </th>
+              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                คะแนน (≤100)
+              </th>
+              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                เกรด
+              </th>
+              <th className="px-6 py-3 w-24" />
+            </tr>
+          </thead>
+
+          <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
+            {reportData.grades.map((item, idx) => {
+              const isOpen = openIdx === idx;
+              return (
+                <tr key={item.subject_id}>
+                  <td className="px-6 py-4 whitespace-nowrap font-medium">
+                    {item.subject_name}
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    {item.score ?? '-'}
+                  </td>
+                  <td className="px-6 py-4 text-center font-bold text-lg">
+                    {item.grade ?? '-'}
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <button
+                      onClick={() => setOpenIdx(isOpen ? null : idx)}
+                      className="text-sm px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:opacity-90"
+                    >
+                      {isOpen ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+
+          <tfoot className="bg-gray-100 dark:bg-gray-700">
+            <tr>
+              <td colSpan={3} className="px-6 py-4 text-right font-bold uppercase">
+                เกรดเฉลี่ย (GPA)
+              </td>
+              <td className="px-6 py-4 text-center font-bold text-xl text-blue-600 dark:text-blue-400">
+                {reportData.gpa}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+
+        {/* แถบรายละเอียดใต้ตาราง */}
+        {openIdx !== null && reportData.grades[openIdx] && (
+          <div className="border-t border-gray-200 dark:border-gray-700 p-6">
+            <h3 className="font-semibold mb-3">
+              รายละเอียดคะแนน: {reportData.grades[openIdx].subject_name}
+            </h3>
+            {reportData.grades[openIdx].components.length === 0 ? (
+              <p className="text-gray-500">ยังไม่กำหนดช่องคะแนนสำหรับวิชานี้</p>
+            ) : (
+              <div className="overflow-x-auto">
                 <table className="min-w-full">
-                    <thead className="bg-gray-100 dark:bg-gray-700">
-                        <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">รายวิชา</th>
-                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">คะแนน</th>
-                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-24">เกรด</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
-                        {reportData.grades.map((item, index) => (
-                            <tr key={index}>
-                                <td className="px-6 py-4 whitespace-nowrap font-medium">{item.subject_name}</td>
-                                <td className="px-6 py-4 text-center">{item.score ?? '-'}</td>
-                                <td className="px-6 py-4 text-center font-bold text-lg">{item.grade ?? '-'}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                    <tfoot className="bg-gray-100 dark:bg-gray-700">
-                        <tr>
-                            <td colSpan={2} className="px-6 py-4 text-right font-bold uppercase">เกรดเฉลี่ย (GPA)</td>
-                            <td className="px-6 py-4 text-center font-bold text-xl text-blue-600 dark:text-blue-400">{reportData.gpa}</td>
-                        </tr>
-                    </tfoot>
+                  <thead className="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        ช่องคะแนน
+                      </th>
+                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
+                        ได้ / เต็ม
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
+                    {reportData.grades[openIdx].components.map(c => (
+                      <tr key={c.id}>
+                        <td className="px-4 py-2">{c.name}</td>
+                        <td className="px-4 py-2 text-center">
+                          {c.score ?? 0} / {c.max}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
                 </table>
-            </div>
-        </div>
-    );
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

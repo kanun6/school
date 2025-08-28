@@ -150,9 +150,6 @@ export default async function CoursesPage() {
               รายวิชาที่สอน
             </h1>
           </div>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">
-            ดึงรายวิชาจากฐานข้อมูล และใช้คำอธิบาย/หัวข้อประกอบจากแคตตาล็อกคงที่
-          </p>
         </header>
 
         {subjects.length === 0 ? (
