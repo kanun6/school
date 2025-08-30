@@ -1,12 +1,12 @@
-// components\admin\UserManagement.tsx
+// components/admin/UserManagement.tsx
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState, ReactNode, ChangeEvent } from 'react';
 import type { ManagedUser, Subject, Class } from '@/lib/types';
-import EditUserModal from './EditUserModal';
 import { useModal } from '@/contexts/ModalContext';
+import { Settings, X, ShieldAlert } from 'lucide-react';
 
-/** ----- Strict Types ----- **/
+/** ===== Local Types (ไม่มี any) ===== */
 type RoleUnion = 'admin' | 'teacher' | 'student';
 type BanDuration = '24h' | 'none';
 
@@ -15,46 +15,295 @@ type UpdateUserPayload = Partial<{
   first_name: string;
   last_name: string;
   role: RoleUnion;
-  // assignments (mapping tables)
+  // assignments
   subject_id: string | null;
   class_id: string | null;
-  // auth (admin API)
+  // auth
   ban_duration: BanDuration;
 }>;
-type UpdateUserFn = (userId: string, updates: UpdateUserPayload) => void | Promise<void>;
-type BanUserFn = (userId: string, userEmail?: string) => void | Promise<void>;
-type UnbanUserFn = (userId: string, userEmail?: string) => void | Promise<void>;
 
-/** ---- grouping types/consts for class sections ---- */
+type UpdateUserFn = (userId: string, updates: UpdateUserPayload) => Promise<void>;
+type BanUserFn = (userId: string, userEmail?: string) => Promise<void>;
+type UnbanUserFn = (userId: string, userEmail?: string) => Promise<void>;
+
 const UNASSIGNED = 'UNASSIGNED' as const;
 type ClassKey = string | typeof UNASSIGNED;
 
-/** ----- Reusable User Table ----- **/
-const UserTable = ({
-  users,
-  subjects,
-  classes,
-  handleUpdateUser,
-  handleDeleteUser,
-  handleBanUser,
-  handleUnbanUser,
-  setEditingUser,
-  updating,
-  role,
-}: {
+/* =====================================================================================
+ * Side Sheet (Drawer)
+ * ===================================================================================== */
+function SideSheet(props: {
+  open: boolean;
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  width?: number;
+}) {
+  const { open, title, onClose, children, width = 560 } = props;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className={`fixed inset-0 z-[60] transition-opacity ${
+          open ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        } bg-black/40`}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      {/* Panel */}
+      <aside
+        className={`fixed right-0 top-0 h-full z-[61] transform transition-transform duration-300 ease-out
+          bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100
+          border-l border-slate-200 dark:border-slate-700 shadow-xl
+          ${open ? 'translate-x-0' : 'translate-x-full'}`}
+        style={{ width }}
+        role="dialog"
+        aria-labelledby="sheet-title"
+        aria-describedby="sheet-content"
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+          <h3 id="sheet-title" className="text-base font-semibold">
+            {title}
+          </h3>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div id="sheet-content" className="h-[calc(100%-56px)] overflow-auto p-4">
+          {children}
+        </div>
+      </aside>
+    </>
+  );
+}
+
+/* =====================================================================================
+ * Settings Sheet
+ * ===================================================================================== */
+function SettingsSheet(props: {
+  user: ManagedUser;
+  subjects: Subject[];
+  classes: Class[];
+  onClose: () => void;
+  onSave: UpdateUserFn;
+  onBan: BanUserFn;
+  onUnban: UnbanUserFn;
+  onDelete: (userId: string, userEmail: string) => Promise<void>;
+  updating: string | null;
+  open: boolean;
+}) {
+  const { user, subjects, classes, onClose, onSave, onBan, onUnban, onDelete, updating, open } =
+    props;
+
+  const isBusy = updating === user.id;
+
+  const [firstName, setFirstName] = useState<string>(user.first_name);
+  const [lastName, setLastName] = useState<string>(user.last_name);
+  const [role, setRole] = useState<RoleUnion>(user.role as RoleUnion);
+  const [subjectId, setSubjectId] = useState<string>(user.subject_id ?? '');
+  const [classId, setClassId] = useState<string>(user.class_id ?? '');
+
+  const handleChangeRole = (newRole: RoleUnion) => {
+    setRole(newRole);
+    if (newRole === 'admin') {
+      setSubjectId('');
+      setClassId('');
+    } else if (newRole === 'teacher') {
+      setClassId('');
+    } else if (newRole === 'student') {
+      setSubjectId('');
+    }
+  };
+
+  const save = async () => {
+    const updates: UpdateUserPayload = {
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
+      role,
+    };
+    if (role === 'teacher') {
+      updates.subject_id = subjectId || null;
+      updates.class_id = null;
+    } else if (role === 'student') {
+      updates.class_id = classId || null;
+      updates.subject_id = null;
+    } else {
+      updates.subject_id = null;
+      updates.class_id = null;
+    }
+
+    // ปิด sheet ทันที (optimistic close)
+    onClose();
+    await onSave(user.id, updates);
+  };
+
+  const isBanned = !!user.banned_until && new Date(user.banned_until) > new Date();
+
+  return (
+    <SideSheet open={open} onClose={onClose} title="User Settings">
+      {/* Header Info */}
+      <div className="mb-4 space-y-1">
+        <div className="text-sm text-slate-600 dark:text-slate-300">{user.email}</div>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
+            bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100 capitalize">
+            {user.role}
+          </span>
+          {isBanned ? (
+            <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium
+              bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+              <ShieldAlert size={14} /> Banned
+            </span>
+          ) : (
+            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
+              bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+              Active
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Form */}
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">First name</label>
+            <input
+              className="input-field w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700
+                         text-slate-900 dark:text-slate-100"
+              value={firstName}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setFirstName(e.target.value)}
+              disabled={isBusy}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Last name</label>
+            <input
+              className="input-field w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700
+                         text-slate-900 dark:text-slate-100"
+              value={lastName}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setLastName(e.target.value)}
+              disabled={isBusy}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Role</label>
+            <select
+              className="select-field w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700
+                         text-slate-900 dark:text-slate-100"
+              value={role}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                handleChangeRole(e.target.value as RoleUnion)
+              }
+              disabled={isBusy}
+            >
+              <option value="admin">admin</option>
+              <option value="teacher">teacher</option>
+              <option value="student">student</option>
+            </select>
+          </div>
+
+          {role === 'teacher' && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Subject</label>
+              <select
+                className="select-field w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700
+                           text-slate-900 dark:text-slate-100"
+                value={subjectId}
+                onChange={(e: ChangeEvent<HTMLSelectElement>) => setSubjectId(e.target.value)}
+                disabled={isBusy}
+              >
+                <option value="">-- Unassigned --</option>
+                {subjects.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {role === 'student' && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Class / Room</label>
+              <select
+                className="select-field w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700
+                           text-slate-900 dark:text-slate-100"
+                value={classId}
+                onChange={(e: ChangeEvent<HTMLSelectElement>) => setClassId(e.target.value)}
+                disabled={isBusy}
+              >
+                <option value="">-- Unassigned --</option>
+                {classes
+                  .slice()
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        <div className="pt-2 flex flex-wrap items-center gap-2">
+          <button
+            onClick={save}
+            disabled={isBusy}
+            className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400"
+          >
+            Save
+          </button>
+
+          {isBanned ? (
+            <button
+              onClick={() => onUnban(user.id, user.email)}
+              disabled={isBusy}
+              className="px-4 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 disabled:bg-green-400"
+            >
+              Unban
+            </button>
+          ) : (
+            <button
+              onClick={() => onBan(user.id, user.email)}
+              disabled={isBusy}
+              className="px-4 py-2 rounded-md bg-amber-500 text-white hover:bg-amber-600 disabled:bg-amber-300"
+            >
+              Ban (24h)
+            </button>
+          )}
+
+          <button
+            onClick={() => onDelete(user.id, user.email)}
+            disabled={isBusy}
+            className="ml-auto px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:bg-red-400"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </SideSheet>
+  );
+}
+
+/* =====================================================================================
+ * User Table
+ * ===================================================================================== */
+function UserTable(props: {
   users: ManagedUser[];
   subjects: Subject[];
   classes: Class[];
-  handleUpdateUser: UpdateUserFn;
-  handleDeleteUser: (userId: string, userEmail: string) => void | Promise<void>;
-  handleBanUser: BanUserFn;
-  handleUnbanUser: UnbanUserFn;
-  setEditingUser: (user: ManagedUser) => void;
+  onOpenSettings: (user: ManagedUser) => void;
   updating: string | null;
-  role: RoleUnion;
-}) => {
-  const baseButtonStyles =
-    'px-3 py-1 text-xs font-medium text-white rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors duration-200';
+  sectionRole: RoleUnion; // admin/teacher/student section
+}) {
+  const { users, subjects, classes, onOpenSettings, updating, sectionRole } = props;
 
   if (users.length === 0) {
     return (
@@ -64,146 +313,88 @@ const UserTable = ({
     );
   }
 
+  const classNameMap: Record<string, string> = {};
+  classes.forEach((c) => {
+    classNameMap[c.id] = c.name;
+  });
+
+  const subjectNameMap: Record<string, string> = {};
+  subjects.forEach((s) => {
+    subjectNameMap[s.id] = s.name;
+  });
+
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-        <thead className="text-xs text-gray-700 uppercase bg-gray-100 dark:bg-gray-700 dark:text-gray-400">
+      <table className="w-full text-sm text-left text-slate-700 dark:text-slate-300">
+        <thead className="text-xs uppercase bg-slate-100 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300">
           <tr>
-            <th scope="col" className="py-3 px-6">Name</th>
-            <th scope="col" className="py-3 px-6">Email</th>
-            {role !== 'admin' && <th scope="col" className="py-3 px-6">Assignment</th>}
-            <th scope="col" className="py-3 px-6">Role</th>
-            <th scope="col" className="py-3 px-6">Status</th>
-            <th scope="col" className="py-3 px-6">Actions</th>
+            <th className="py-3 px-6">Name</th>
+            <th className="py-3 px-6">Email</th>
+            {sectionRole !== 'admin' && <th className="py-3 px-6">Assignment</th>}
+            <th className="py-3 px-6">Role</th>
+            <th className="py-3 px-6">Status</th>
+            <th className="py-3 px-6">Actions</th>
           </tr>
         </thead>
         <tbody>
           {users.map((user) => {
             const isBanned =
               !!user.banned_until && new Date(user.banned_until) > new Date();
+            const busy = updating === user.id;
 
-            const onChangeRole = (newRole: RoleUnion) => {
-              const updates: UpdateUserPayload = { role: newRole };
-              if (newRole === 'admin') {
-                updates.subject_id = null;
-                updates.class_id = null;
-              } else if (newRole === 'teacher') {
-                updates.class_id = null;
-              } else if (newRole === 'student') {
-                updates.subject_id = null;
-              }
-              handleUpdateUser(user.id, updates);
-            };
+            const assignmentText =
+              sectionRole === 'teacher'
+                ? user.subject_id
+                  ? subjectNameMap[user.subject_id] ?? 'Unknown'
+                  : 'Unassigned'
+                : sectionRole === 'student'
+                ? user.class_id
+                  ? classNameMap[user.class_id] ?? 'Unknown'
+                  : 'Unassigned'
+                : '-';
 
             return (
               <tr
                 key={user.id}
-                className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600"
+                className="bg-white dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/80"
               >
-                <td className="py-4 px-6 font-medium text-gray-900 dark:text-white whitespace-nowrap">
+                <td className="py-3 px-6 font-medium text-slate-900 dark:text-slate-100 whitespace-nowrap">
                   {user.first_name} {user.last_name}
                 </td>
-                <td className="py-4 px-6">{user.email}</td>
+                <td className="py-3 px-6">{user.email}</td>
 
-                {role === 'teacher' && (
-                  <td className="py-4 px-6">
-                    <select
-                      value={user.subject_id ?? ''}
-                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                        handleUpdateUser(user.id, {
-                          subject_id: e.target.value ? e.target.value : null,
-                        })
-                      }
-                      disabled={updating === user.id}
-                      className="select-field"
-                    >
-                      <option value="">-- Unassigned --</option>
-                      {subjects.map((subject) => (
-                        <option key={subject.id} value={subject.id}>
-                          {subject.name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
+                {sectionRole !== 'admin' && (
+                  <td className="py-3 px-6">{assignmentText}</td>
                 )}
 
-                {role === 'student' && (
-                  <td className="py-4 px-6">
-                    <select
-                      value={user.class_id ?? ''}
-                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                        handleUpdateUser(user.id, {
-                          class_id: e.target.value ? e.target.value : null,
-                        })
-                      }
-                      disabled={updating === user.id}
-                      className="select-field"
-                    >
-                      <option value="">-- Unassigned --</option>
-                      {classes.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                )}
+                <td className="py-3 px-6 capitalize">{user.role}</td>
 
-                <td className="py-4 px-6">
-                  <select
-                    value={user.role as RoleUnion}
-                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                      onChangeRole(e.target.value as RoleUnion)
-                    }
-                    disabled={updating === user.id}
-                    className="select-field"
-                  >
-                    <option value="admin">admin</option>
-                    <option value="teacher">teacher</option>
-                    <option value="student">student</option>
-                  </select>
-                </td>
-
-                <td className="py-4 px-6">
+                <td className="py-3 px-6">
                   {isBanned ? (
-                    <span className="status-banned">Banned</span>
+                    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
+                      bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+                      Banned
+                    </span>
                   ) : (
-                    <span className="status-active">Active</span>
+                    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
+                      bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                      Active
+                    </span>
                   )}
                 </td>
 
-                <td className="py-4 px-6 space-x-2 whitespace-nowrap">
+                <td className="py-3 px-6 whitespace-nowrap">
                   <button
-                    onClick={() => setEditingUser(user)}
-                    className={`${baseButtonStyles} bg-blue-600 hover:bg-blue-700 focus:ring-blue-500`}
+                    onClick={() => onOpenSettings(user)}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-white rounded-md shadow-sm
+                               bg-slate-700 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2
+                               focus:ring-slate-500 dark:focus:ring-offset-slate-900 disabled:opacity-60"
+                    disabled={busy}
+                    aria-label="Open settings"
+                    title="Settings"
                   >
-                    Edit
-                  </button>
-
-                  {isBanned ? (
-                    <button
-                      onClick={() => handleUnbanUser(user.id, user.email)}
-                      className={`${baseButtonStyles} bg-green-600 hover:bg-green-700 focus:ring-green-500`}
-                      disabled={updating === user.id}
-                    >
-                      Unban
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleBanUser(user.id, user.email)}
-                      className={`${baseButtonStyles} bg-yellow-500 hover:bg-yellow-600 focus:ring-yellow-400`}
-                      disabled={updating === user.id}
-                    >
-                      Ban
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => handleDeleteUser(user.id, user.email)}
-                    className={`${baseButtonStyles} bg-red-600 hover:bg-red-700 focus:ring-red-500`}
-                    disabled={updating === user.id}
-                  >
-                    Delete
+                    <Settings size={16} />
+                    Settings
                   </button>
                 </td>
               </tr>
@@ -213,21 +404,23 @@ const UserTable = ({
       </table>
     </div>
   );
-};
+}
 
-/** ----- Page Component ----- **/
+/* =====================================================================================
+ * Page Component
+ * ===================================================================================== */
 export default function UserManagement() {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string>('');
   const [updating, setUpdating] = useState<string | null>(null);
-  const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
+  const [settingsUser, setSettingsUser] = useState<ManagedUser | null>(null);
 
   const { showConfirm, showAlert } = useModal();
 
-  const fetchData = async () => {
+  const fetchData = async (): Promise<void> => {
     try {
       setLoading(true);
       const [usersRes, subjectsRes, classesRes] = await Promise.all([
@@ -247,16 +440,16 @@ export default function UserManagement() {
       setUsers(usersData);
       setSubjects(subjectsData);
       setClasses(classesData);
-    } catch (err: unknown) {
-      if (err instanceof Error) setError(err.message);
-      else setError('An unknown error occurred');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'An unknown error occurred';
+      setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    void fetchData();
   }, []);
 
   const { admins, teachers, students } = useMemo(() => {
@@ -267,7 +460,7 @@ export default function UserManagement() {
     };
   }, [users]);
 
-  /** จัดกลุ่มนักเรียนตามห้อง/ชั้น */
+  /** Group students by class */
   const { studentsByClass, classOrder, classNameMap } = useMemo(() => {
     const byClass: Record<ClassKey, ManagedUser[]> = {};
     const nameMap: Record<string, string> = {};
@@ -300,7 +493,7 @@ export default function UserManagement() {
     };
   }, [students, classes]);
 
-  /** เปิด/ปิด section แต่ละห้องของนักเรียน */
+  /** เปิด/ปิด section ของนักเรียนรายห้อง */
   const [openSections, setOpenSections] = useState<Record<ClassKey, boolean>>({});
   useEffect(() => {
     const initial: Record<ClassKey, boolean> = {};
@@ -308,16 +501,16 @@ export default function UserManagement() {
       initial[id] = true;
     });
     setOpenSections(initial);
-  }, [classOrder]); // ✅ ถูกต้องตาม ESLint
+  }, [classOrder]);
 
   const toggleOpen = (id: ClassKey) =>
     setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
 
   /** Hide/Show สำหรับ Admin และ Teacher */
-  const [openAdmins, setOpenAdmins] = useState(true);
-  const [openTeachers, setOpenTeachers] = useState(true);
+  const [openAdmins, setOpenAdmins] = useState<boolean>(true);
+  const [openTeachers, setOpenTeachers] = useState<boolean>(true);
 
-  /** อัปเดตข้อมูลผู้ใช้ */
+  /** Update user */
   const handleUpdateUser: UpdateUserFn = async (userId, updates) => {
     setUpdating(userId);
     setError('');
@@ -333,7 +526,7 @@ export default function UserManagement() {
       }
       await fetchData();
       await showAlert({ title: 'อัปเดตสำเร็จ', message: 'บันทึกข้อมูลผู้ใช้เรียบร้อยแล้ว' });
-    } catch (err: unknown) {
+    } catch (err) {
       const msg = err instanceof Error ? err.message : 'An unknown error occurred';
       await showAlert({ title: 'เกิดข้อผิดพลาด', message: msg, type: 'alert' });
     } finally {
@@ -359,8 +552,11 @@ export default function UserManagement() {
       });
       if (!response.ok) throw new Error('Failed to ban user.');
       await fetchData();
-      await showAlert({ title: 'สำเร็จ', message: `${userEmail ?? 'ผู้ใช้'} ถูกแบนเรียบร้อยแล้ว (24 ชั่วโมง)` });
-    } catch (err: unknown) {
+      await showAlert({
+        title: 'สำเร็จ',
+        message: `${userEmail ?? 'ผู้ใช้'} ถูกแบนเรียบร้อยแล้ว (24 ชั่วโมง)`,
+      });
+    } catch (err) {
       const msg = err instanceof Error ? err.message : 'An unknown error occurred';
       await showAlert({ title: 'เกิดข้อผิดพลาด', message: msg, type: 'alert' });
     } finally {
@@ -386,7 +582,7 @@ export default function UserManagement() {
       if (!response.ok) throw new Error('Failed to unban user.');
       await fetchData();
       await showAlert({ title: 'สำเร็จ', message: `${userEmail ?? 'ผู้ใช้'} ถูกยกเลิกการแบนแล้ว` });
-    } catch (err: unknown) {
+    } catch (err) {
       const msg = err instanceof Error ? err.message : 'An unknown error occurred';
       await showAlert({ title: 'เกิดข้อผิดพลาด', message: msg, type: 'alert' });
     } finally {
@@ -412,7 +608,8 @@ export default function UserManagement() {
       if (!response.ok) throw new Error('Failed to delete user.');
       setUsers((prev) => prev.filter((u) => u.id !== userId));
       await showAlert({ title: 'สำเร็จ', message: `ลบผู้ใช้ ${userEmail} เรียบร้อยแล้ว` });
-    } catch (err: unknown) {
+      setSettingsUser(null);
+    } catch (err) {
       const message = err instanceof Error ? err.message : 'An unknown error occurred';
       await showAlert({ title: 'เกิดข้อผิดพลาด', message, type: 'alert' });
     } finally {
@@ -420,83 +617,77 @@ export default function UserManagement() {
     }
   };
 
-  const handleSaveProfile = async (userId: string, updates: { first_name: string; last_name: string }) => {
-    await handleUpdateUser(userId, updates);
-  };
-
   if (loading) return <p className="text-center mt-4">Loading user data...</p>;
   if (error) return <p className="text-center mt-4 text-red-500">Error: {error}</p>;
 
   return (
     <>
-      {editingUser && (
-        <EditUserModal
-          user={editingUser}
-          onClose={() => setEditingUser(null)}
-          onSave={handleSaveProfile}
+      {/* Settings Sheet */}
+      {settingsUser && (
+        <SettingsSheet
+          open={!!settingsUser}
+          user={settingsUser}
+          subjects={subjects}
+          classes={classes}
+          onClose={() => setSettingsUser(null)}
+          onSave={handleUpdateUser}
+          onBan={handleBanUser}
+          onUnban={handleUnbanUser}
+          onDelete={handleDeleteUser}
+          updating={updating}
         />
       )}
 
       <div className="space-y-8">
         <h3 className="text-xl font-semibold mb-2">Administrators</h3>
-        {/* Admins (collapsible) */}
-        <div className="mb-2 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <div className="mb-2 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
           <button
             onClick={() => setOpenAdmins((v) => !v)}
-            className="w-full flex items-center justify-between px-4 py-3 bg-gray-100 dark:bg-gray-800 text-left"
+            className="w-full flex items-center justify-between px-4 py-3 bg-slate-100 dark:bg-slate-800 text-left"
           >
-            <span className="font-semibold text-gray-900 dark:text-gray-100">
+            <span className="font-semibold text-slate-900 dark:text-slate-100">
               Admin ({admins.length})
             </span>
-            <span className="text-sm text-gray-600 dark:text-gray-300">{openAdmins ? 'Hide' : 'Show'}</span>
+            <span className="text-sm text-slate-600 dark:text-slate-300">
+              {openAdmins ? 'Hide' : 'Show'}
+            </span>
           </button>
           {openAdmins && (
-            <div className="bg-white dark:bg-gray-800 rounded-b-lg shadow-md overflow-hidden">
+            <div className="bg-white dark:bg-slate-900 rounded-b-lg shadow-md overflow-hidden">
               <UserTable
                 users={admins}
-                role="admin"
-                {...{
-                  subjects,
-                  classes,
-                  handleUpdateUser,
-                  handleDeleteUser,
-                  handleBanUser,
-                  handleUnbanUser,
-                  setEditingUser,
-                  updating,
-                }}
+                sectionRole="admin"
+                subjects={subjects}
+                classes={classes}
+                onOpenSettings={(u) => setSettingsUser(u)}
+                updating={updating}
               />
             </div>
           )}
         </div>
 
-        {/* Teachers (collapsible) */}
         <h3 className="text-xl font-semibold mb-2">Teachers</h3>
-        <div className="mb-2 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <div className="mb-2 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
           <button
             onClick={() => setOpenTeachers((v) => !v)}
-            className="w-full flex items-center justify-between px-4 py-3 bg-gray-100 dark:bg-gray-800 text-left"
+            className="w-full flex items-center justify-between px-4 py-3 bg-slate-100 dark:bg-slate-800 text-left"
           >
-            <span className="font-semibold text-gray-900 dark:text-gray-100">
+            <span className="font-semibold text-slate-900 dark:text-slate-100">
               Teachers ({teachers.length})
             </span>
-            <span className="text-sm text-gray-600 dark:text-gray-300">{openTeachers ? 'Hide' : 'Show'}</span>
+            <span className="text-sm text-slate-600 dark:text-slate-300">
+              {openTeachers ? 'Hide' : 'Show'}
+            </span>
           </button>
           {openTeachers && (
-            <div className="bg-white dark:bg-gray-800 rounded-b-lg shadow-md overflow-hidden">
+            <div className="bg-white dark:bg-slate-900 rounded-b-lg shadow-md overflow-hidden">
               <UserTable
                 users={teachers}
-                role="teacher"
-                {...{
-                  subjects,
-                  classes,
-                  handleUpdateUser,
-                  handleDeleteUser,
-                  handleBanUser,
-                  handleUnbanUser,
-                  setEditingUser,
-                  updating,
-                }}
+                sectionRole="teacher"
+                subjects={subjects}
+                classes={classes}
+                onOpenSettings={(u) => setSettingsUser(u)}
+                updating={updating}
               />
             </div>
           )}
@@ -505,7 +696,6 @@ export default function UserManagement() {
         {/* Students grouped by class (collapsible per class) */}
         <div>
           <h3 className="text-xl font-semibold mb-2">Students</h3>
-
           {classOrder.map((classId) => {
             const list = studentsByClass[classId] || [];
             if (list.length === 0) return null;
@@ -518,32 +708,29 @@ export default function UserManagement() {
             const open = openSections[classId] ?? true;
 
             return (
-              <div key={classId} className="mb-4 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                {/* Section Header */}
+              <div
+                key={classId}
+                className="mb-4 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden"
+              >
                 <button
                   onClick={() => toggleOpen(classId)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-gray-100 dark:bg-gray-800 text-left"
+                  className="w-full flex items-center justify-between px-4 py-3 bg-slate-100 dark:bg-slate-800 text-left"
                 >
-                  <span className="font-semibold text-gray-900 dark:text-gray-100">{title}</span>
-                  <span className="text-sm text-gray-600 dark:text-gray-300">{open ? 'Hide' : 'Show'}</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">{title}</span>
+                  <span className="text-sm text-slate-600 dark:text-slate-300">
+                    {open ? 'Hide' : 'Show'}
+                  </span>
                 </button>
 
-                {/* Section Body */}
                 {open && (
-                  <div className="bg-white dark:bg-gray-800 rounded-b-lg shadow-sm overflow-hidden">
+                  <div className="bg-white dark:bg-slate-900 rounded-b-lg shadow-sm overflow-hidden">
                     <UserTable
                       users={list}
-                      role="student"
-                      {...{
-                        subjects,
-                        classes,
-                        handleUpdateUser,
-                        handleDeleteUser,
-                        handleBanUser,
-                        handleUnbanUser,
-                        setEditingUser,
-                        updating,
-                      }}
+                      sectionRole="student"
+                      subjects={subjects}
+                      classes={classes}
+                      onOpenSettings={(u) => setSettingsUser(u)}
+                      updating={updating}
                     />
                   </div>
                 )}

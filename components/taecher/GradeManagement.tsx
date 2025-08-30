@@ -13,9 +13,9 @@ interface ClassData {
 }
 
 interface ComponentItem {
-  id: string;      // component id (server id หรือ temp-uuid)
+  id: string; // component id (server id หรือ temp-uuid)
   name: string;
-  max: number;     // คะแนนเต็มของช่องนี้
+  max: number; // คะแนนเต็มของช่องนี้
   position: number;
 }
 
@@ -72,7 +72,9 @@ export default function GradeManagement() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/teacher/grades?getClasses=true", { credentials: "include" });
+        const res = await fetch("/api/teacher/grades?getClasses=true", {
+          credentials: "include",
+        });
         if (!res.ok) throw new Error("Failed to fetch classes");
         const data: GetClassListResponse = await res.json();
 
@@ -84,9 +86,14 @@ export default function GradeManagement() {
           setLoading(false);
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "An unknown error occurred";
+        const msg =
+          err instanceof Error ? err.message : "An unknown error occurred";
         setError(msg);
-        await showAlertRef.current({ title: "เกิดข้อผิดพลาด", message: msg, type: "alert" });
+        await showAlertRef.current({
+          title: "เกิดข้อผิดพลาด",
+          message: msg,
+          type: "alert",
+        });
         setLoading(false);
       }
     })();
@@ -98,9 +105,13 @@ export default function GradeManagement() {
       setLoading(true);
       setError("");
       try {
-        const res = await fetch(`/api/teacher/grades?classId=${classId}`, { credentials: "include" });
+        const res = await fetch(`/api/teacher/grades?classId=${classId}`, {
+          credentials: "include",
+        });
         if (!res.ok) {
-          const e = (await res.json().catch(() => null)) as { error?: string } | null;
+          const e = (await res.json().catch(() => null)) as {
+            error?: string;
+          } | null;
           throw new Error(e?.error || "Failed to fetch");
         }
         const data: GetClassDataResponse = await res.json();
@@ -110,9 +121,14 @@ export default function GradeManagement() {
         setComponents(data.scheme?.components ?? []);
         setStudents(data.students ?? []);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "An unknown error occurred";
+        const msg =
+          err instanceof Error ? err.message : "An unknown error occurred";
         setError(msg);
-        await showAlert({ title: "เกิดข้อผิดพลาด", message: msg, type: "alert" });
+        await showAlert({
+          title: "เกิดข้อผิดพลาด",
+          message: msg,
+          type: "alert",
+        });
         setStudents([]);
         setComponents([]);
         setSchemeId(null);
@@ -157,7 +173,12 @@ export default function GradeManagement() {
             (sum, comp) => sum + (cp[comp.id] ?? 0),
             0
           );
-          return { ...s, componentScores: cp, total, grade: calculateGrade(total) };
+          return {
+            ...s,
+            componentScores: cp,
+            total,
+            grade: calculateGrade(total),
+          };
         })
       );
 
@@ -175,11 +196,16 @@ export default function GradeManagement() {
     if (!confirmed) return;
 
     removeComponent(comp.id);
-    await showAlert({ title: "ลบแล้ว", message: `ลบช่อง "${comp.name}" เรียบร้อย` });
+    await showAlert({
+      title: "ลบแล้ว",
+      message: `ลบช่อง "${comp.name}" เรียบร้อย`,
+    });
   };
 
   const updateComponentName = (compId: string, name: string) => {
-    setComponents((prev) => prev.map((c) => (c.id === compId ? { ...c, name } : c)));
+    setComponents((prev) =>
+      prev.map((c) => (c.id === compId ? { ...c, name } : c))
+    );
   };
 
   const updateComponentMax = (compId: string, maxStr: string) => {
@@ -194,7 +220,12 @@ export default function GradeManagement() {
   };
 
   /* -------- Score editing -------- */
-  const handleScoreChange = (studentId: string, compId: string, value: string, max: number) => {
+  const handleScoreChange = (
+    studentId: string,
+    compId: string,
+    value: string,
+    max: number
+  ) => {
     const parsed = value === "" ? null : parseInt(value, 10);
     if (parsed !== null) {
       if (Number.isNaN(parsed) || parsed < 0) return;
@@ -204,10 +235,20 @@ export default function GradeManagement() {
     setStudents((prev) =>
       prev.map((s) => {
         if (s.id !== studentId) return s;
-        const next: Record<string, number | null> = { ...(s.componentScores || {}) };
+        const next: Record<string, number | null> = {
+          ...(s.componentScores || {}),
+        };
         next[compId] = parsed;
-        const total = components.reduce<number>((sum, comp) => sum + (next[comp.id] ?? 0), 0);
-        return { ...s, componentScores: next, total, grade: calculateGrade(total) };
+        const total = components.reduce<number>(
+          (sum, comp) => sum + (next[comp.id] ?? 0),
+          0
+        );
+        return {
+          ...s,
+          componentScores: next,
+          total,
+          grade: calculateGrade(total),
+        };
       })
     );
   };
@@ -235,7 +276,12 @@ export default function GradeManagement() {
     try {
       const schemePayload: {
         id?: string;
-        components: { id?: string; name: string; max: number; position: number }[];
+        components: {
+          id?: string;
+          name: string;
+          max: number;
+          position: number;
+        }[];
       } = {
         id: schemeId ?? undefined,
         components: components.map((c, idx) => ({
@@ -270,7 +316,9 @@ export default function GradeManagement() {
       });
 
       if (!res.ok) {
-        const j = (await res.json().catch(() => null)) as { error?: string } | null;
+        const j = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
         throw new Error(j?.error || "Failed to save");
       }
 
@@ -295,21 +343,36 @@ export default function GradeManagement() {
           <h1 className="text-3xl font-bold">บันทึกผลการเรียน</h1>
         </div>
         <div className="text-right">
-          <p className="mt-1 text-gray-500 dark:text-gray-400">
-            วิชา: <span className="font-semibold">{subjectName || "Loading..."}</span>
+          <p className="mt-1 text-slate-600 dark:text-slate-300">
+            วิชา:{" "}
+            <span className="font-semibold text-slate-900 dark:text-slate-100">
+              {subjectName || "Loading..."}
+            </span>
           </p>
+
           {classes.length > 0 && (
-            <select
-              value={selectedClass}
-              onChange={(e) => setSelectedClass(e.target.value)}
-              className="select-field max-w-xs mt-2"
-            >
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <>
+              <label htmlFor="classSelect" className="sr-only">
+                เลือกห้อง
+              </label>
+              <select
+                id="classSelect"
+                value={selectedClass}
+                onChange={(e) => setSelectedClass(e.target.value)}
+                className="
+          mt-2 w-full max-w-xs rounded-md
+          border border-slate-300 bg-white text-slate-900 shadow-sm
+          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+          dark:bg-slate-800 dark:text-slate-100 dark:border-slate-600
+        "
+              >
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </>
           )}
         </div>
       </div>
@@ -331,7 +394,9 @@ export default function GradeManagement() {
         </div>
 
         {components.length === 0 ? (
-          <p className="text-gray-500 mt-3">ยังไม่มีช่องคะแนน — กด “เพิ่มช่องคะแนน”</p>
+          <p className="text-gray-500 mt-3">
+            ยังไม่มีช่องคะแนน — กด “เพิ่มช่องคะแนน”
+          </p>
         ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -344,12 +409,17 @@ export default function GradeManagement() {
               </thead>
               <tbody>
                 {components.map((c) => (
-                  <tr key={c.id} className="border-b border-gray-200 dark:border-gray-600">
+                  <tr
+                    key={c.id}
+                    className="border-b border-gray-200 dark:border-gray-600"
+                  >
                     <td className="px-4 py-2">
                       <input
                         className="input-field w-full"
                         value={c.name}
-                        onChange={(e) => updateComponentName(c.id, e.target.value)}
+                        onChange={(e) =>
+                          updateComponentName(c.id, e.target.value)
+                        }
                       />
                     </td>
                     <td className="px-4 py-2">
@@ -358,7 +428,9 @@ export default function GradeManagement() {
                         type="number"
                         min={1}
                         value={c.max}
-                        onChange={(e) => updateComponentMax(c.id, e.target.value)}
+                        onChange={(e) =>
+                          updateComponentMax(c.id, e.target.value)
+                        }
                       />
                     </td>
                     <td className="px-4 py-2">
@@ -405,7 +477,10 @@ export default function GradeManagement() {
           <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
             {loading ? (
               <tr>
-                <td colSpan={2 + components.length} className="text-center py-4">
+                <td
+                  colSpan={2 + components.length}
+                  className="text-center py-4"
+                >
                   Loading students...
                 </td>
               </tr>
@@ -413,7 +488,10 @@ export default function GradeManagement() {
               students.map((s) => {
                 const over = (s.total ?? 0) > 100;
                 return (
-                  <tr key={s.id} className={over ? "bg-red-50 dark:bg-red-900/20" : ""}>
+                  <tr
+                    key={s.id}
+                    className={over ? "bg-red-50 dark:bg-red-900/20" : ""}
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       {s.first_name} {s.last_name}
                     </td>
@@ -425,22 +503,35 @@ export default function GradeManagement() {
                           min={0}
                           max={c.max}
                           value={s.componentScores?.[c.id] ?? ""}
-                          onChange={(e) => handleScoreChange(s.id, c.id, e.target.value, c.max)}
+                          onChange={(e) =>
+                            handleScoreChange(s.id, c.id, e.target.value, c.max)
+                          }
                           placeholder={`0-${c.max}`}
                         />
                       </td>
                     ))}
                     <td className="px-6 py-4 font-semibold">
-                      <span className={over ? "text-red-600" : ""}>{s.total ?? 0}</span>
-                      {over && <span className="ml-2 text-xs text-red-500">(เกิน 100)</span>}
+                      <span className={over ? "text-red-600" : ""}>
+                        {s.total ?? 0}
+                      </span>
+                      {over && (
+                        <span className="ml-2 text-xs text-red-500">
+                          (เกิน 100)
+                        </span>
+                      )}
                     </td>
-                    <td className="px-6 py-4 font-bold text-lg">{s.grade ?? "-"}</td>
+                    <td className="px-6 py-4 font-bold text-lg">
+                      {s.grade ?? "-"}
+                    </td>
                   </tr>
                 );
               })
             ) : (
               <tr>
-                <td colSpan={2 + components.length} className="text-center py-4 text-gray-500">
+                <td
+                  colSpan={2 + components.length}
+                  className="text-center py-4 text-gray-500"
+                >
                   ไม่พบนักเรียนในห้องนี้ หรือยังไม่มีการสอนในห้องนี้
                 </td>
               </tr>
