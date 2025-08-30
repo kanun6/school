@@ -1,3 +1,4 @@
+// components/teacher/GradeManagement.tsx
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
@@ -45,9 +46,9 @@ interface GetClassDataResponse {
 
 /* ===================== Component ===================== */
 export default function GradeManagement() {
-  const { showAlert } = useModal();
+  const { showAlert, showConfirm } = useModal();
 
-  // ทำให้ showAlert มี reference คงที่ ใช้ใน useEffect([])
+  // ทำให้ showAlert มี reference คงที่ ใช้ใน useEffect([]) ช่วงดึง classes ครั้งแรก
   const showAlertRef = useRef(showAlert);
   useEffect(() => {
     showAlertRef.current = showAlert;
@@ -141,15 +142,40 @@ export default function GradeManagement() {
     );
   };
 
+  // ลบ component + รีคำนวณ total/grade ของนักเรียนทุกคน
   const removeComponent = (compId: string) => {
-    setComponents((prev) => prev.filter((c) => c.id !== compId));
-    setStudents((prev) =>
-      prev.map((s) => {
-        const cp = { ...s.componentScores };
-        delete cp[compId];
-        return { ...s, componentScores: cp };
-      })
-    );
+    setComponents((prev) => {
+      const nextComponents = prev
+        .filter((c) => c.id !== compId)
+        .map((c, idx) => ({ ...c, position: idx })); // จัด position ใหม่ให้ต่อเนื่อง
+
+      setStudents((prevStudents) =>
+        prevStudents.map((s) => {
+          const cp = { ...s.componentScores };
+          delete cp[compId];
+          const total = nextComponents.reduce<number>(
+            (sum, comp) => sum + (cp[comp.id] ?? 0),
+            0
+          );
+          return { ...s, componentScores: cp, total, grade: calculateGrade(total) };
+        })
+      );
+
+      return nextComponents;
+    });
+  };
+
+  // 👉 ยืนยันก่อนลบช่องคะแนน
+  const confirmRemoveComponent = async (comp: ComponentItem) => {
+    const confirmed = await showConfirm({
+      title: "ยืนยันการลบช่องคะแนน",
+      message: `ต้องการลบช่อง "${comp.name}" (เต็ม ${comp.max} คะแนน) หรือไม่?\nคะแนนของนักเรียนในช่องนี้จะถูกลบไปด้วย`,
+      confirmText: "ลบ",
+    });
+    if (!confirmed) return;
+
+    removeComponent(comp.id);
+    await showAlert({ title: "ลบแล้ว", message: `ลบช่อง "${comp.name}" เรียบร้อย` });
   };
 
   const updateComponentName = (compId: string, name: string) => {
@@ -337,7 +363,7 @@ export default function GradeManagement() {
                     </td>
                     <td className="px-4 py-2">
                       <button
-                        onClick={() => removeComponent(c.id)}
+                        onClick={() => void confirmRemoveComponent(c)}
                         className="text-red-600 hover:underline"
                       >
                         ลบช่องนี้
