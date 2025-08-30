@@ -4,36 +4,51 @@ import { Role } from './lib/types';
 
 export async function middleware(request: NextRequest) {
   const { supabase, response } = createSupabaseMiddlewareClient(request);
-  const { data: { user } } = await supabase.auth.getUser();
+
+  // ✅ ใช้ getSession() ใน middleware (เร็ว, ไม่ error refresh token)
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
 
   const { pathname } = request.nextUrl;
-  const publicRoutes = ['/', '/signin', '/signup' , '/about' ,'/contact' ,'/services' , '/services/courses' , '/services/staff' ,'/services/class-students'];
+  const publicRoutes = [
+    '/', '/signin', '/signup', '/about', '/contact',
+    '/services', '/services/courses', '/services/staff', '/services/class-students'
+  ];
   const isPublicRoute = publicRoutes.includes(pathname);
 
-  // If not logged in and trying to access a protected route, redirect to signin
+  // ถ้าไม่ login และพยายามเข้า protected route → redirect ไป signin
   if (!user && !isPublicRoute) {
     return NextResponse.redirect(new URL('/signin', request.url));
   }
 
-  // If logged in, handle redirects
+  // ถ้า login แล้ว → ตรวจ role จาก profiles
   if (user) {
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single<{ role: Role }>();
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single<{ role: Role }>();
+
     if (!profile) return response;
 
     const userRole = profile.role;
     const roleHomePage = `/${userRole}`;
 
-    // ** THE FIX **
-    // If user is on signin or signup page, redirect them to their role's home page.
-    // They are allowed to visit the home page ('/').
+    // ถ้า login แล้ว แต่เข้า /signin หรือ /signup → redirect ไป home ของ role
     if (pathname === '/signin' || pathname === '/signup') {
       return NextResponse.redirect(new URL(roleHomePage, request.url));
     }
 
-    // If trying to access a page for another role, redirect to their own homepage
-    if (pathname.startsWith('/admin') && userRole !== 'admin') return NextResponse.redirect(new URL(roleHomePage, request.url));
-    if (pathname.startsWith('/teacher') && userRole !== 'teacher') return NextResponse.redirect(new URL(roleHomePage, request.url));
-    if (pathname.startsWith('/student') && userRole !== 'student') return NextResponse.redirect(new URL(roleHomePage, request.url));
+    // ถ้าพยายามเข้า role อื่นที่ไม่ตรงกับตัวเอง → redirect กลับ
+    if (pathname.startsWith('/admin') && userRole !== 'admin') {
+      return NextResponse.redirect(new URL(roleHomePage, request.url));
+    }
+    if (pathname.startsWith('/teacher') && userRole !== 'teacher') {
+      return NextResponse.redirect(new URL(roleHomePage, request.url));
+    }
+    if (pathname.startsWith('/student') && userRole !== 'student') {
+      return NextResponse.redirect(new URL(roleHomePage, request.url));
+    }
   }
 
   return response;

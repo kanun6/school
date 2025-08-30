@@ -4,7 +4,7 @@ import UserProfile from "@/components/layout/UserProfile";
 
 
 
-export default function TeacherProfilePage() {
+export default function StudentProfilePage() {
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-6">
       <h1 className="text-2xl font-bold mb-4">โปรไฟล์ของคุณ</h1>
