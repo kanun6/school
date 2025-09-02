@@ -13,6 +13,14 @@ export default function SignInForm() {
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
 
+  const fieldClass =
+    'w-full rounded-md border border-gray-300 bg-white text-gray-900 placeholder:text-gray-500 ' +
+    'shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ' +
+    'dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-400';
+
+  const labelClass =
+    'block text-sm font-medium mb-2 text-gray-800 dark:text-gray-200';
+
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
@@ -34,36 +42,39 @@ export default function SignInForm() {
   };
 
   return (
-    <div className="w-full max-w-xs">
+    <div className="w-full max-w-sm mx-auto">
       <form
-        className="bg-white shadow-md rounded-lg px-8 pt-6 pb-8 mb-4"
+        className="bg-white dark:bg-gray-900 ring-1 ring-gray-200 dark:ring-gray-700 rounded-xl px-8 pt-6 pb-8 mb-4 shadow-sm"
         onSubmit={handleSignIn}
       >
-        <h2 className="text-2xl font-bold text-center text-gray-800 mb-6">
+        <h2 className="text-2xl font-bold text-center text-gray-900 dark:text-gray-100 mb-6">
           Sign In
         </h2>
 
         {error && (
-          <p className="text-red-500 text-xs italic text-center mb-4">{error}</p>
+          <p className="text-red-600 dark:text-red-400 text-sm text-center mb-4">
+            {error}
+          </p>
         )}
 
         <div className="mb-4">
-          <label htmlFor="email" className="block text-gray-700 text-sm font-bold mb-2">
+          <label htmlFor="email" className={labelClass}>
             Email
           </label>
           <input
             id="email"
             type="email"
-            placeholder="Email"
+            placeholder="you@example.com"
+            autoComplete="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            className={fieldClass}
           />
         </div>
 
         <div className="mb-6">
-          <label htmlFor="password" className="block text-gray-700 text-sm font-bold mb-2">
+          <label htmlFor="password" className={labelClass}>
             Password
           </label>
           <div className="relative">
@@ -71,18 +82,18 @@ export default function SignInForm() {
               id="password"
               type={showPassword ? 'text' : 'password'}
               placeholder="••••••••••"
+              autoComplete="current-password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="shadow appearance-none border rounded w-full py-2 px-3 pr-10 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline"
+              className={`${fieldClass} pr-10`}
             />
             <button
               type="button"
               aria-label={showPassword ? 'Hide password' : 'Show password'}
               aria-pressed={showPassword}
               onClick={() => setShowPassword((s) => !s)}
-              // กึ่งกลางแนวตั้ง + ขยับขึ้นเล็กน้อย
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-600 hover:text-gray-800 translate-y-[-6px]"
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-600 hover:text-gray-800 translate-y-[-6px] dark:text-gray-300 dark:hover:text-gray-100"
               title={showPassword ? 'Hide password' : 'Show password'}
             >
               {showPassword ? <FiEye size={20} /> : <FiEyeOff size={20} />}
@@ -90,19 +101,20 @@ export default function SignInForm() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
-          <button
-            type="submit"
-            disabled={loading}
-            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full disabled:bg-blue-300"
-          >
-            {loading ? 'Signing In...' : 'Sign In'}
-          </button>
-        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full rounded-md bg-blue-600 text-white font-semibold py-2 px-4 shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-400"
+        >
+          {loading ? 'Signing In...' : 'Sign In'}
+        </button>
 
-        <p className="text-center text-gray-500 text-xs mt-4">
+        <p className="text-center text-xs mt-4 text-gray-600 dark:text-gray-300">
           Do not have an account?{' '}
-          <a className="text-blue-500 hover:text-blue-800" href="/signup">
+          <a
+            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+            href="/signup"
+          >
             Sign Up
           </a>
         </p>

@@ -1,4 +1,3 @@
-// components/admin/UserManagement.tsx
 'use client';
 
 import { useEffect, useMemo, useState, ReactNode, ChangeEvent } from 'react';
@@ -6,19 +5,15 @@ import type { ManagedUser, Subject, Class } from '@/lib/types';
 import { useModal } from '@/contexts/ModalContext';
 import { Settings, X, ShieldAlert } from 'lucide-react';
 
-/** ===== Local Types (ไม่มี any) ===== */
 type RoleUnion = 'admin' | 'teacher' | 'student';
 type BanDuration = '24h' | 'none';
 
 type UpdateUserPayload = Partial<{
-  // profiles
   first_name: string;
   last_name: string;
   role: RoleUnion;
-  // assignments
   subject_id: string | null;
   class_id: string | null;
-  // auth
   ban_duration: BanDuration;
 }>;
 
@@ -29,9 +24,22 @@ type UnbanUserFn = (userId: string, userEmail?: string) => Promise<void>;
 const UNASSIGNED = 'UNASSIGNED' as const;
 type ClassKey = string | typeof UNASSIGNED;
 
-/* =====================================================================================
- * Side Sheet (Drawer)
- * ===================================================================================== */
+// ---- ขยาย ManagedUser เพื่ออ่านฟิลด์เสริมจาก DB (optional) ----
+type ManagedUserEx = ManagedUser & {
+  profile_image_url?: string | null;
+  bio?: string | null;
+  birthday?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  student_id?: string | null;
+  department?: string | null;
+  position?: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
+  last_sign_in_at?: string | null;
+};
+
+/* ============================== Side Sheet =============================== */
 function SideSheet(props: {
   open: boolean;
   title: string;
@@ -43,7 +51,6 @@ function SideSheet(props: {
 
   return (
     <>
-      {/* Backdrop */}
       <div
         className={`fixed inset-0 z-[60] transition-opacity ${
           open ? 'opacity-100' : 'opacity-0 pointer-events-none'
@@ -51,7 +58,6 @@ function SideSheet(props: {
         onClick={onClose}
         aria-hidden="true"
       />
-      {/* Panel */}
       <aside
         className={`fixed right-0 top-0 h-full z-[61] transform transition-transform duration-300 ease-out
           bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100
@@ -82,11 +88,9 @@ function SideSheet(props: {
   );
 }
 
-/* =====================================================================================
- * Settings Sheet
- * ===================================================================================== */
+/* ============================== Manage Sheet =============================== */
 function SettingsSheet(props: {
-  user: ManagedUser;
+  user: ManagedUserEx;
   subjects: Subject[];
   classes: Class[];
   onClose: () => void;
@@ -137,16 +141,23 @@ function SettingsSheet(props: {
       updates.class_id = null;
     }
 
-    // ปิด sheet ทันที (optimistic close)
-    onClose();
+    onClose(); // ปิดทันทีแบบเดียวกับที่ขอ
     await onSave(user.id, updates);
   };
 
   const isBanned = !!user.banned_until && new Date(user.banned_until) > new Date();
 
+  // ปุ่มสีตามที่ขอ
+  const saveBtn =
+    'px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-400';
+  const warnBtn =
+    'px-4 py-2 rounded-md bg-amber-500 text-white hover:bg-amber-600 disabled:bg-amber-300';
+  const dangerBtn =
+    'px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:bg-red-400';
+
   return (
-    <SideSheet open={open} onClose={onClose} title="User Settings">
-      {/* Header Info */}
+    <SideSheet open={open} onClose={onClose} title="Manage User">
+      {/* Header */}
       <div className="mb-4 space-y-1">
         <div className="text-sm text-slate-600 dark:text-slate-300">{user.email}</div>
         <div className="flex items-center gap-2">
@@ -165,6 +176,17 @@ function SettingsSheet(props: {
               Active
             </span>
           )}
+        </div>
+
+        {/* ข้อมูลจาก DB เพิ่มเติม (read-only) */}
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-300">
+          {user.phone && <div><span className="font-semibold">Phone: </span>{user.phone}</div>}
+          {user.student_id && <div><span className="font-semibold">Student ID: </span>{user.student_id}</div>}
+          {user.department && <div><span className="font-semibold">Department: </span>{user.department}</div>}
+          {user.position && <div><span className="font-semibold">Position: </span>{user.position}</div>}
+          {user.address && <div className="sm:col-span-2"><span className="font-semibold">Address: </span>{user.address}</div>}
+          {user.birthday && <div><span className="font-semibold">Birthday: </span>{user.birthday}</div>}
+          {user.last_sign_in_at && <div><span className="font-semibold">Last Sign-In: </span>{user.last_sign_in_at}</div>}
         </div>
       </div>
 
@@ -253,36 +275,44 @@ function SettingsSheet(props: {
         </div>
 
         <div className="pt-2 flex flex-wrap items-center gap-2">
-          <button
-            onClick={save}
-            disabled={isBusy}
-            className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400"
-          >
+          {/* Save = เขียว */}
+          <button onClick={save} disabled={isBusy} className={saveBtn}>
             Save
           </button>
 
+          {/* Ban/Unban = ส้ม */}
           {isBanned ? (
             <button
-              onClick={() => onUnban(user.id, user.email)}
+              onClick={() => {
+                onClose(); // ปิดทันที
+                void onUnban(user.id, user.email);
+              }}
               disabled={isBusy}
-              className="px-4 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 disabled:bg-green-400"
+              className={warnBtn}
             >
               Unban
             </button>
           ) : (
             <button
-              onClick={() => onBan(user.id, user.email)}
+              onClick={() => {
+                onClose(); // ปิดทันที
+                void onBan(user.id, user.email);
+              }}
               disabled={isBusy}
-              className="px-4 py-2 rounded-md bg-amber-500 text-white hover:bg-amber-600 disabled:bg-amber-300"
+              className={warnBtn}
             >
               Ban (24h)
             </button>
           )}
 
+          {/* Delete = แดง */}
           <button
-            onClick={() => onDelete(user.id, user.email)}
+            onClick={() => {
+              onClose(); // ปิดทันที
+              void onDelete(user.id, user.email);
+            }}
             disabled={isBusy}
-            className="ml-auto px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:bg-red-400"
+            className={dangerBtn}
           >
             Delete
           </button>
@@ -292,16 +322,14 @@ function SettingsSheet(props: {
   );
 }
 
-/* =====================================================================================
- * User Table
- * ===================================================================================== */
+/* ============================== User Table =============================== */
 function UserTable(props: {
   users: ManagedUser[];
   subjects: Subject[];
   classes: Class[];
   onOpenSettings: (user: ManagedUser) => void;
   updating: string | null;
-  sectionRole: RoleUnion; // admin/teacher/student section
+  sectionRole: RoleUnion;
 }) {
   const { users, subjects, classes, onOpenSettings, updating, sectionRole } = props;
 
@@ -314,14 +342,10 @@ function UserTable(props: {
   }
 
   const classNameMap: Record<string, string> = {};
-  classes.forEach((c) => {
-    classNameMap[c.id] = c.name;
-  });
+  classes.forEach((c) => { classNameMap[c.id] = c.name; });
 
   const subjectNameMap: Record<string, string> = {};
-  subjects.forEach((s) => {
-    subjectNameMap[s.id] = s.name;
-  });
+  subjects.forEach((s) => { subjectNameMap[s.id] = s.name; });
 
   return (
     <div className="overflow-x-auto">
@@ -338,8 +362,7 @@ function UserTable(props: {
         </thead>
         <tbody>
           {users.map((user) => {
-            const isBanned =
-              !!user.banned_until && new Date(user.banned_until) > new Date();
+            const isBanned = !!user.banned_until && new Date(user.banned_until) > new Date();
             const busy = updating === user.id;
 
             const assignmentText =
@@ -390,11 +413,11 @@ function UserTable(props: {
                                bg-slate-700 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2
                                focus:ring-slate-500 dark:focus:ring-offset-slate-900 disabled:opacity-60"
                     disabled={busy}
-                    aria-label="Open settings"
-                    title="Settings"
+                    aria-label="Open manage"
+                    title="Manage"
                   >
                     <Settings size={16} />
-                    Settings
+                    Manage
                   </button>
                 </td>
               </tr>
@@ -406,9 +429,7 @@ function UserTable(props: {
   );
 }
 
-/* =====================================================================================
- * Page Component
- * ===================================================================================== */
+/* ============================== Page =============================== */
 export default function UserManagement() {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -448,29 +469,22 @@ export default function UserManagement() {
     }
   };
 
-  useEffect(() => {
-    void fetchData();
-  }, []);
+  useEffect(() => { void fetchData(); }, []);
 
-  const { admins, teachers, students } = useMemo(() => {
-    return {
-      admins: users.filter((u) => u.role === 'admin'),
-      teachers: users.filter((u) => u.role === 'teacher'),
-      students: users.filter((u) => u.role === 'student'),
-    };
-  }, [users]);
+  const { admins, teachers, students } = useMemo(() => ({
+    admins: users.filter((u) => u.role === 'admin'),
+    teachers: users.filter((u) => u.role === 'teacher'),
+    students: users.filter((u) => u.role === 'student'),
+  }), [users]);
 
-  /** Group students by class */
+  // Group students by class
   const { studentsByClass, classOrder, classNameMap } = useMemo(() => {
     const byClass: Record<ClassKey, ManagedUser[]> = {};
     const nameMap: Record<string, string> = {};
 
-    classes
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .forEach((c) => {
-        nameMap[c.id] = c.name;
-      });
+    classes.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((c) => {
+      nameMap[c.id] = c.name;
+    });
 
     students.forEach((s) => {
       const key: ClassKey = s.class_id ?? UNASSIGNED;
@@ -486,31 +500,21 @@ export default function UserManagement() {
 
     const map: Record<ClassKey, string> = { [UNASSIGNED]: 'Unassigned', ...nameMap };
 
-    return {
-      studentsByClass: byClass,
-      classOrder: order,
-      classNameMap: map,
-    };
+    return { studentsByClass: byClass, classOrder: order, classNameMap: map };
   }, [students, classes]);
 
-  /** เปิด/ปิด section ของนักเรียนรายห้อง */
   const [openSections, setOpenSections] = useState<Record<ClassKey, boolean>>({});
   useEffect(() => {
     const initial: Record<ClassKey, boolean> = {};
-    classOrder.forEach((id) => {
-      initial[id] = true;
-    });
+    classOrder.forEach((id) => { initial[id] = true; });
     setOpenSections(initial);
   }, [classOrder]);
 
-  const toggleOpen = (id: ClassKey) =>
-    setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
+  const toggleOpen = (id: ClassKey) => setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
 
-  /** Hide/Show สำหรับ Admin และ Teacher */
   const [openAdmins, setOpenAdmins] = useState<boolean>(true);
   const [openTeachers, setOpenTeachers] = useState<boolean>(true);
 
-  /** Update user */
   const handleUpdateUser: UpdateUserFn = async (userId, updates) => {
     setUpdating(userId);
     setError('');
@@ -534,7 +538,6 @@ export default function UserManagement() {
     }
   };
 
-  /** Ban / Unban / Delete */
   const handleBanUser: BanUserFn = async (userId, userEmail) => {
     const confirmed = await showConfirm({
       title: 'ยืนยันการแบน',
@@ -552,10 +555,7 @@ export default function UserManagement() {
       });
       if (!response.ok) throw new Error('Failed to ban user.');
       await fetchData();
-      await showAlert({
-        title: 'สำเร็จ',
-        message: `${userEmail ?? 'ผู้ใช้'} ถูกแบนเรียบร้อยแล้ว (24 ชั่วโมง)`,
-      });
+      await showAlert({ title: 'สำเร็จ', message: `${userEmail ?? 'ผู้ใช้'} ถูกแบนแล้ว (24 ชั่วโมง)` });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'An unknown error occurred';
       await showAlert({ title: 'เกิดข้อผิดพลาด', message: msg, type: 'alert' });
@@ -622,11 +622,10 @@ export default function UserManagement() {
 
   return (
     <>
-      {/* Settings Sheet */}
       {settingsUser && (
         <SettingsSheet
           open={!!settingsUser}
-          user={settingsUser}
+          user={settingsUser as ManagedUserEx}
           subjects={subjects}
           classes={classes}
           onClose={() => setSettingsUser(null)}
@@ -693,7 +692,7 @@ export default function UserManagement() {
           )}
         </div>
 
-        {/* Students grouped by class (collapsible per class) */}
+        {/* Students grouped by class */}
         <div>
           <h3 className="text-xl font-semibold mb-2">Students</h3>
           {classOrder.map((classId) => {
