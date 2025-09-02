@@ -1,6 +1,6 @@
 // app/api/admin/users/route.ts
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type AdminUserAttributes, type User } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 /* ======================= Admin client (Service Role) ======================= */
@@ -18,7 +18,7 @@ interface ProfileRow {
   role: Role;
   profile_image_url: string | null;
   bio: string | null;
-  birthday: string | null;          // DATE -> ส่งออกเป็น 'YYYY-MM-DD' หรือ null
+  birthday: string | null; // YYYY-MM-DD
   phone: string | null;
   address: string | null;
   student_id: string | null;
@@ -38,7 +38,7 @@ interface StudentClassRow {
   class_id: string;
 }
 
-/** โครงที่ API คืน (คง fields หลักของ ManagedUser และเพิ่มข้อมูลจาก DB) */
+/** โครงที่ API คืน (ManagedUser + ฟิลด์เสริม) */
 interface AdminUserOut {
   id: string;
   email: string;
@@ -49,7 +49,6 @@ interface AdminUserOut {
   subject_id: string | null;
   class_id: string | null;
 
-  // เพิ่มข้อมูลจาก DB/Auth (optional)
   profile_image_url: string | null;
   bio: string | null;
   birthday: string | null;
@@ -62,6 +61,30 @@ interface AdminUserOut {
   created_at: string | null;
   last_sign_in_at: string | null;
 }
+
+type UpdatesIn = Partial<{
+  // assignments
+  subject_id: string | null;
+  class_id: string | null;
+
+  // role & ชื่อ
+  role: Role;
+  first_name: string | null;
+  last_name: string | null;
+
+  // profile fields
+  profile_image_url: string | null;
+  bio: string | null;
+  birthday: string | null;
+  phone: string | null;
+  address: string | null;
+  department: string | null;
+  position: string | null;
+  student_id: string | null;
+
+  // auth ban
+  ban_duration: '24h' | 'none';
+}>;
 
 /* =============================== AuthZ check =============================== */
 async function isAdmin(): Promise<boolean> {
@@ -85,27 +108,18 @@ export async function GET() {
   }
 
   try {
-    // ดึงผู้ใช้จาก Auth (เพียงพอสำหรับระบบขนาดเล็ก-กลาง; ถ้าเกิน 1000 ให้ทำ paginate)
     const { data, error: usersError } = await supabaseAdmin.auth.admin.listUsers({
       perPage: 1000,
     });
     if (usersError) throw usersError;
 
-    const users = (data?.users ?? []) as Array<{
-      id: string;
-      email: string | null;
-      created_at?: string | null;
-      last_sign_in_at?: string | null;
-      banned_until?: string | null; // ถ้ามีในโปรเจกต์
-    }>;
-
+    const users: User[] = data?.users ?? [];
     if (users.length === 0) {
       return NextResponse.json<AdminUserOut[]>([]);
     }
 
     const ids: string[] = users.map((u) => u.id);
 
-    // ดึงข้อมูลจากฐานข้อมูล
     const [profilesRes, teacherSubjectsRes, studentClassesRes] = await Promise.all([
       supabaseAdmin.from('profiles').select('*').in('id', ids),
       supabaseAdmin.from('teacher_subjects').select('*').in('teacher_id', ids),
@@ -116,46 +130,43 @@ export async function GET() {
     if (teacherSubjectsRes.error) throw teacherSubjectsRes.error;
     if (studentClassesRes.error) throw studentClassesRes.error;
 
-    const profiles = (profilesRes.data ?? []) as ProfileRow[];
-    const teacherSubjects = (teacherSubjectsRes.data ?? []) as TeacherSubjectRow[];
-    const studentClasses = (studentClassesRes.data ?? []) as StudentClassRow[];
+    const profiles: ProfileRow[] = (profilesRes.data ?? []) as ProfileRow[];
+    const teacherSubjects: TeacherSubjectRow[] = (teacherSubjectsRes.data ?? []) as TeacherSubjectRow[];
+    const studentClasses: StudentClassRow[] = (studentClassesRes.data ?? []) as StudentClassRow[];
 
-    /* --------- Maps แบบ type-safe (ไม่มี any) --------- */
-    const profileById: Map<string, ProfileRow> = new Map(
-      profiles.map((p) => [p.id, p]),
-    );
-
-    const teacherById: Map<string, TeacherSubjectRow[]> =
-      teacherSubjects.reduce<Map<string, TeacherSubjectRow[]>>((acc, row) => {
+    // Maps แบบ type-safe
+    const profileById: Map<string, ProfileRow> = new Map(profiles.map((p) => [p.id, p]));
+    const teacherById: Map<string, TeacherSubjectRow[]> = teacherSubjects.reduce(
+      (acc, row) => {
         const list = acc.get(row.teacher_id);
         if (list) list.push(row);
         else acc.set(row.teacher_id, [row]);
         return acc;
-      }, new Map());
-
-    const studentById: Map<string, StudentClassRow[]> =
-      studentClasses.reduce<Map<string, StudentClassRow[]>>((acc, row) => {
+      },
+      new Map<string, TeacherSubjectRow[]>(),
+    );
+    const studentById: Map<string, StudentClassRow[]> = studentClasses.reduce(
+      (acc, row) => {
         const list = acc.get(row.student_id);
         if (list) list.push(row);
         else acc.set(row.student_id, [row]);
         return acc;
-      }, new Map());
+      },
+      new Map<string, StudentClassRow[]>(),
+    );
 
-    /* --------- รวมผลลัพธ์ต่อผู้ใช้ --------- */
     const result: AdminUserOut[] = users.map((u) => {
       const p: ProfileRow | undefined = profileById.get(u.id);
       const tAssign = (teacherById.get(u.id) ?? [])[0] ?? null;
       const sAssign = (studentById.get(u.id) ?? [])[0] ?? null;
 
-      const email = u.email ?? '';
-
       return {
         id: u.id,
-        email,
+        email: u.email ?? '',
         first_name: p?.first_name ?? '',
         last_name: p?.last_name ?? '',
         role: (p?.role ?? 'student') as Role,
-        banned_until: u.banned_until ?? null,
+        banned_until: (u as unknown as { banned_until?: string | null }).banned_until ?? null, // บางเวอร์ชันของ type ไม่มี field นี้ แต่ API ส่งคืนจริง
         subject_id: tAssign?.subject_id ?? null,
         class_id: sAssign?.class_id ?? null,
 
@@ -170,7 +181,7 @@ export async function GET() {
         updated_at: p?.updated_at ?? null,
 
         created_at: u.created_at ?? null,
-        last_sign_in_at: u.last_sign_in_at ?? null,
+        last_sign_in_at: (u as unknown as { last_sign_in_at?: string | null }).last_sign_in_at ?? null,
       };
     });
 
@@ -190,14 +201,7 @@ export async function PUT(request: Request) {
   try {
     const { userId, updates } = (await request.json()) as {
       userId: string;
-      updates: {
-        subject_id?: string | null;
-        class_id?: string | null;
-        role?: Role;
-        first_name?: string;
-        last_name?: string;
-        ban_duration?: '24h' | 'none';
-      };
+      updates: UpdatesIn;
     };
 
     if (!userId || !updates) {
@@ -207,7 +211,7 @@ export async function PUT(request: Request) {
       );
     }
 
-    // ครู: assign/unassign subject
+    /* ---------- Assignments ---------- */
     if ('subject_id' in updates) {
       if (updates.subject_id) {
         const { error } = await supabaseAdmin
@@ -223,7 +227,6 @@ export async function PUT(request: Request) {
       }
     }
 
-    // นักเรียน: assign/unassign class
     if ('class_id' in updates) {
       if (updates.class_id) {
         const { error } = await supabaseAdmin
@@ -239,22 +242,48 @@ export async function PUT(request: Request) {
       }
     }
 
-    // โปรไฟล์: first_name/last_name/role
-    const profileUpdates: Partial<Pick<ProfileRow, 'first_name' | 'last_name' | 'role'>> = {};
-    if (updates.first_name) profileUpdates.first_name = updates.first_name;
-    if (updates.last_name) profileUpdates.last_name = updates.last_name;
-    if (updates.role) profileUpdates.role = updates.role;
+    /* ---------- บันทึกโปรไฟล์ (รองรับทุกฟิลด์ รวม null) ---------- */
+    const profileUpdates: Partial<ProfileRow> = { updated_at: new Date().toISOString() };
 
-    if (Object.keys(profileUpdates).length > 0) {
+    if ('first_name' in updates) profileUpdates.first_name = updates.first_name ?? null;
+    if ('last_name' in updates) profileUpdates.last_name = updates.last_name ?? null;
+    if ('role' in updates && updates.role) profileUpdates.role = updates.role;
+
+    if ('profile_image_url' in updates) profileUpdates.profile_image_url = updates.profile_image_url ?? null;
+    if ('bio' in updates) profileUpdates.bio = updates.bio ?? null;
+    if ('birthday' in updates) profileUpdates.birthday = updates.birthday ?? null;
+    if ('phone' in updates) profileUpdates.phone = updates.phone ?? null;
+    if ('address' in updates) profileUpdates.address = updates.address ?? null;
+    if ('department' in updates) profileUpdates.department = updates.department ?? null;
+    if ('position' in updates) profileUpdates.position = updates.position ?? null;
+    if ('student_id' in updates) profileUpdates.student_id = updates.student_id ?? null;
+
+    // มีฟิลด์อย่างน้อย 1 อย่าง (นอกเหนือจาก updated_at)
+    if (Object.keys(profileUpdates).length > 1) {
       const { error } = await supabaseAdmin
         .from('profiles')
-        .update(profileUpdates)
-        .eq('id', userId);
+        .upsert({ id: userId, ...profileUpdates }, { onConflict: 'id' });
       if (error) throw error;
     }
 
-    // หมายเหตุ: ban_duration ตัวอย่างการรับค่าไว้ ถ้าคุณมีระบบแบนจริงให้จัดการใน service อื่นหรือ table อื่น
-    // if (updates.ban_duration === '24h') { ... } else if (updates.ban_duration === 'none') { ... }
+    /* ---------- ถ้าเปลี่ยน role เคลียร์ assignment ข้ามบทบาทเพื่อความปลอดภัย ---------- */
+    if ('role' in updates && updates.role) {
+      if (updates.role === 'admin') {
+        await supabaseAdmin.from('teacher_subjects').delete().eq('teacher_id', userId);
+        await supabaseAdmin.from('student_classes').delete().eq('student_id', userId);
+      } else if (updates.role === 'teacher') {
+        await supabaseAdmin.from('student_classes').delete().eq('student_id', userId);
+      } else if (updates.role === 'student') {
+        await supabaseAdmin.from('teacher_subjects').delete().eq('teacher_id', userId);
+      }
+    }
+
+    /* ---------- Ban / Unban (Auth Admin API) ---------- */
+    if ('ban_duration' in updates && updates.ban_duration) {
+      const attrs: AdminUserAttributes = { ban_duration: updates.ban_duration };
+      const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, attrs);
+      if (error) throw error;
+    }
 
     return NextResponse.json({ message: 'User updated successfully.' });
   } catch (error: unknown) {

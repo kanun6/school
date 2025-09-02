@@ -1,7 +1,7 @@
-// components\profile\MyProfile.tsx
+// components/profile/MyProfile.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AvatarPicker from '@/components/profile/AvatarPicker';
 import { useModal } from '@/contexts/ModalContext';
@@ -32,16 +32,9 @@ type UserProfileResponse = {
 };
 
 type UpsertPayload = {
-  first_name?: string | null;
-  last_name?: string | null;
+  // อนุญาตเฉพาะสองฟิลด์นี้เท่านั้น
   profile_image_url?: string | null;
   bio?: string | null;
-  birthday?: string | null;
-  phone?: string | null;
-  address?: string | null;
-  department?: string | null;
-  position?: string | null;
-  // ❌ ไม่ส่ง: role, student_id, subject/class assignment
 };
 
 export default function MyProfile() {
@@ -52,25 +45,30 @@ export default function MyProfile() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // common editable
-  const [firstName, setFirstName] = useState<string>('');
-  const [lastName, setLastName] = useState<string>('');
+  // แก้ได้เฉพาะสองฟิลด์นี้
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [bio, setBio] = useState<string>('');
-  const [birthday, setBirthday] = useState<string>(''); // YYYY-MM-DD
-  const [phone, setPhone] = useState<string>('');
-  const [address, setAddress] = useState<string>('');
 
-  // role-specific editable
-  const [department, setDepartment] = useState<string>(''); // teacher (และอนุญาต student ถ้าอยากเก็บแผนก)
-  const [position, setPosition] = useState<string>('');     // teacher only
-
-  // read-only / admin-only
+  // สำหรับแสดงผล (ดูอย่างเดียว)
+  const [firstName, setFirstName] = useState<string>('');
+  const [lastName, setLastName] = useState<string>('');
+  const [birthday, setBirthday] = useState<string>(''); // ro
+  const [phone, setPhone] = useState<string>('');       // ro
+  const [address, setAddress] = useState<string>('');   // ro
+  const [department, setDepartment] = useState<string>(''); // ro
+  const [position, setPosition] = useState<string>('');     // ro
+  const [studentId, setStudentId] = useState<string>('');   // ro
   const [role, setRole] = useState<Role>('student');
   const [email, setEmail] = useState<string>('');
-  const [studentId, setStudentId] = useState<string>('');   // student only (ro)
-  const [subjectName, setSubjectName] = useState<string>(''); // teacher ro
-  const [className, setClassName] = useState<string>('');     // student ro
+  const [subjectName, setSubjectName] = useState<string>(''); // ro
+  const [className, setClassName] = useState<string>('');     // ro
+
+  // เก็บค่าเริ่มต้นไว้เทียบว่ามีการเปลี่ยนแปลงไหม
+  const [initialBio, setInitialBio] = useState<string>('');
+  const [initialAvatar, setInitialAvatar] = useState<string | null>(null);
+
+  // toggle แก้ไขเฉพาะ Bio
+  const [editingBio, setEditingBio] = useState<boolean>(false);
 
   useEffect(() => {
     const load = async () => {
@@ -83,32 +81,34 @@ export default function MyProfile() {
         }
         if (!res.ok) {
           const { error } = await res.json();
-          throw new Error(error || 'Failed to load profile');
+          throw new Error(error || 'โหลดโปรไฟล์ไม่สำเร็จ');
         }
         const data: UserProfileResponse = await res.json();
 
         setEmail(data.email ?? '');
         setRole(data.role);
 
-        // set editable fields
+        // สำหรับแสดงผล (ดูอย่างเดียว)
         setFirstName(data.first_name ?? '');
         setLastName(data.last_name ?? '');
-        setProfileImageUrl(data.profile_image_url ?? null);
-        setBio(data.bio ?? '');
         setBirthday(data.birthday ?? '');
         setPhone(data.phone ?? '');
         setAddress(data.address ?? '');
-
-        // role-specific editable
         setDepartment(data.department ?? '');
         setPosition(data.position ?? '');
-
-        // read-only
         setStudentId(data.student_id ?? '');
         setSubjectName(data.subject_name ?? '');
         setClassName(data.class_name ?? '');
+
+        // ฟิลด์ที่แก้ไขได้
+        setProfileImageUrl(data.profile_image_url ?? null);
+        setBio(data.bio ?? '');
+
+        // เก็บค่าเริ่มต้นไว้เปรียบเทียบ
+        setInitialAvatar(data.profile_image_url ?? null);
+        setInitialBio(data.bio ?? '');
       } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Unexpected error';
+        const msg = e instanceof Error ? e.message : 'เกิดข้อผิดพลาดที่ไม่คาดคิด';
         setError(msg);
       } finally {
         setLoading(false);
@@ -132,34 +132,29 @@ export default function MyProfile() {
     'inline-flex items-center justify-center px-4 py-2 rounded-md ' +
     'bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:bg-emerald-400';
 
+  const editBtn =
+    'inline-flex items-center justify-center px-3 py-1.5 rounded-md ' +
+    'bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:bg-blue-300';
+
+  // มีการเปลี่ยนแปลงหรือไม่ (ใช้ปิดปุ่มบันทึก)
+  const hasChanges = useMemo(
+    () => bio !== initialBio || profileImageUrl !== initialAvatar,
+    [bio, initialBio, profileImageUrl, initialAvatar],
+  );
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    if (!hasChanges) return;
+
     setSaving(true);
     setError('');
 
     try {
       const payload: UpsertPayload = {
-        first_name: firstName.trim() || null,
-        last_name: lastName.trim() || null,
+        // ส่งเฉพาะฟิลด์ที่อนุญาต
         profile_image_url: profileImageUrl ?? null,
         bio: bio || null,
-        birthday: birthday || null,
-        phone: phone || null,
-        address: address || null,
       };
-
-      // แนบเฉพาะฟิลด์ที่สอดคล้องกับ role
-      if (role === 'teacher') {
-        payload.department = department || null;
-        payload.position = position || null;
-      } else if (role === 'student') {
-        // นักเรียนอาจมี department (คณะ/สาขา) ถ้าคุณใช้ใน schema ก็อนุญาตแก้ได้
-        payload.department = department || null;
-        // ไม่ส่ง position สำหรับ student
-      } else {
-        // admin: อนุญาตแก้ department ได้ถ้าอยากเก็บฝ่าย; ไม่ส่ง position โดยดีฟอลต์
-        payload.department = department || null;
-      }
 
       const res = await fetch('/api/profiles/upsert', {
         method: 'POST',
@@ -169,15 +164,20 @@ export default function MyProfile() {
 
       if (!res.ok) {
         const { error } = await res.json();
-        throw new Error(error || 'Failed to save profile');
+        throw new Error(error || 'บันทึกโปรไฟล์ไม่สำเร็จ');
       }
+
+      // อัปเดตค่าเริ่มต้นใหม่หลังบันทึก
+      setInitialAvatar(profileImageUrl ?? null);
+      setInitialBio(bio);
+      setEditingBio(false);
 
       await showAlert({
         title: 'บันทึกสำเร็จ',
         message: 'อัปเดตโปรไฟล์เรียบร้อยแล้ว',
       });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Unexpected error';
+      const msg = e instanceof Error ? e.message : 'เกิดข้อผิดพลาดที่ไม่คาดคิด';
       setError(msg);
       await showAlert({ title: 'เกิดข้อผิดพลาด', message: msg, type: 'alert' });
     } finally {
@@ -186,10 +186,10 @@ export default function MyProfile() {
   }
 
   if (loading) {
-    return <p className="text-sm text-slate-600 dark:text-slate-300">Loading profile…</p>;
+    return <p className="text-sm text-slate-600 dark:text-slate-300">กำลังโหลดโปรไฟล์…</p>;
   }
   if (error) {
-    return <p className="text-sm text-red-600 dark:text-red-400">Error: {error}</p>;
+    return <p className="text-sm text-red-600 dark:text-red-400">ข้อผิดพลาด: {error}</p>;
   }
 
   return (
@@ -197,7 +197,7 @@ export default function MyProfile() {
       onSubmit={handleSave}
       className="bg-white dark:bg-gray-900 ring-1 ring-gray-200 dark:ring-gray-700 rounded-xl px-5 sm:px-8 py-6 shadow-sm"
     >
-      {/* Header */}
+      {/* ส่วนหัว */}
       <div className="mb-6">
         <p className="text-sm text-slate-600 dark:text-slate-300">{email}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -209,193 +209,128 @@ export default function MyProfile() {
           {role === 'teacher' && subjectName && (
             <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
               bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-              Subject: {subjectName}
+              วิชา: {subjectName}
             </span>
           )}
 
           {role === 'student' && className && (
             <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
               bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
-              Class: {className}
+              ห้อง: {className}
             </span>
           )}
         </div>
       </div>
 
-      {/* Avatar + Bio (ทุก role) */}
+      {/* รูปโปรไฟล์ + Bio (แก้ได้) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div>
-          <label className={labelClass}>Profile Image</label>
+          <label className={labelClass}>รูปโปรไฟล์</label>
+          {/* เปลี่ยนรูปโปรไฟล์ได้ตลอด */}
           <AvatarPicker value={profileImageUrl} onChange={setProfileImageUrl} />
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            อัปเดตรูปแล้วอย่าลืมกด “บันทึกการเปลี่ยนแปลง”
+          </p>
         </div>
         <div>
-          <label htmlFor="bio" className={labelClass}>Bio</label>
+          <div className="flex items-center justify-between mb-2">
+            <label htmlFor="bio" className={labelClass}>เกี่ยวกับฉัน (Bio)</label>
+            <button
+              type="button"
+              onClick={() => setEditingBio((v) => !v)}
+              className={editBtn}
+              disabled={saving}
+            >
+              {editingBio ? 'หยุดแก้ไข' : 'แก้ไข'}
+            </button>
+          </div>
           <textarea
             id="bio"
-            rows={4}
+            rows={6}
             value={bio}
             onChange={(e) => setBio(e.target.value)}
-            className={`${fieldClass} min-h-[116px]`}
+            className={`${editingBio ? fieldClass : roClass} min-h-[140px]`}
             placeholder="เล่าเกี่ยวกับตัวคุณสั้น ๆ"
+            readOnly={!editingBio}
           />
         </div>
       </div>
 
-      {/* Basic (ทุก role) */}
+      {/* ข้อมูลส่วนตัว (ดูอย่างเดียว) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div>
-          <label htmlFor="firstName" className={labelClass}>First Name</label>
-          <input
-            id="firstName"
-            type="text"
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-            className={fieldClass}
-            required
-          />
+          <label className={labelClass}>ชื่อ</label>
+          <input value={firstName || '-'} className={roClass} readOnly />
         </div>
         <div>
-          <label htmlFor="lastName" className={labelClass}>Last Name</label>
-          <input
-            id="lastName"
-            type="text"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-            className={fieldClass}
-            required
-          />
+          <label className={labelClass}>นามสกุล</label>
+          <input value={lastName || '-'} className={roClass} readOnly />
         </div>
       </div>
 
-      {/* Contact + Birthday (ทุก role) */}
+      {/* การติดต่อ (ดูอย่างเดียว) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
         <div>
-          <label htmlFor="birthday" className={labelClass}>Birthday</label>
-          <input
-            id="birthday"
-            type="date"
-            value={birthday ?? ''}
-            onChange={(e) => setBirthday(e.target.value)}
-            className={fieldClass}
-          />
+          <label className={labelClass}>วันเกิด</label>
+          <input value={birthday || '-'} className={roClass} readOnly />
         </div>
         <div>
-          <label htmlFor="phone" className={labelClass}>Phone</label>
-          <input
-            id="phone"
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            className={fieldClass}
-            placeholder="0xx-xxx-xxxx"
-          />
+          <label className={labelClass}>โทรศัพท์</label>
+          <input value={phone || '-'} className={roClass} readOnly />
         </div>
         <div>
-          <label htmlFor="address" className={labelClass}>Address</label>
-          <input
-            id="address"
-            type="text"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            className={fieldClass}
-            placeholder="ที่อยู่สำหรับติดต่อ"
-          />
+          <label className={labelClass}>ที่อยู่</label>
+          <input value={address || '-'} className={roClass} readOnly />
         </div>
       </div>
 
-      {/* ===== Role-specific sections ===== */}
+      {/* ข้อมูลตามบทบาท (ดูอย่างเดียว) */}
       {role === 'teacher' && (
-        <>
-          {/* Teacher editable */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label htmlFor="department" className={labelClass}>Department</label>
-              <input
-                id="department"
-                type="text"
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                className={fieldClass}
-                placeholder="เช่น วิทยาศาสตร์ / คณิตศาสตร์"
-              />
-            </div>
-            <div>
-              <label htmlFor="position" className={labelClass}>Position</label>
-              <input
-                id="position"
-                type="text"
-                value={position}
-                onChange={(e) => setPosition(e.target.value)}
-                className={fieldClass}
-                placeholder="เช่น Lecturer / Advisor"
-              />
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className={labelClass}>แผนก/กลุ่มสาระ</label>
+            <input value={department || '-'} className={roClass} readOnly />
           </div>
-
-          {/* Teacher read-only */}
-          <div className="mb-4">
-            <label className={labelClass}>Subject (assigned by admin)</label>
-            <input value={subjectName || 'Unassigned'} className={roClass} readOnly />
+          <div>
+            <label className={labelClass}>ตำแหน่ง</label>
+            <input value={position || '-'} className={roClass} readOnly />
           </div>
-        </>
+        </div>
       )}
 
       {role === 'student' && (
-        <>
-          {/* Student editable (ถ้าต้องการเก็บแผนก/สายการเรียน) */}
-          <div className="mb-4">
-            <label htmlFor="department" className={labelClass}>Department / Major</label>
-            <input
-              id="department"
-              type="text"
-              value={department}
-              onChange={(e) => setDepartment(e.target.value)}
-              className={fieldClass}
-              placeholder="เช่น วิทย์-คณิต / ศิลป์-ภาษา"
-            />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className={labelClass}>รหัสนักเรียน</label>
+            <input value={studentId || '-'} className={roClass} readOnly />
           </div>
-
-          {/* Student read-only */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className={labelClass}>Student ID</label>
-              <input value={studentId || '-'} className={roClass} readOnly />
-            </div>
-            <div>
-              <label className={labelClass}>Class (assigned by admin)</label>
-              <input value={className || 'Unassigned'} className={roClass} readOnly />
-            </div>
+          <div>
+            <label className={labelClass}>แผนก/สาขา</label>
+            <input value={department || '-'} className={roClass} readOnly />
           </div>
-        </>
+        </div>
       )}
 
       {role === 'admin' && (
-        <>
-          {/* Admin: ให้แก้ข้อมูลส่วนตัวทั่วไป, ซ่อน position, subject/class */}
-          <div className="mb-4">
-            <label htmlFor="department" className={labelClass}>Department (optional)</label>
-            <input
-              id="department"
-              type="text"
-              value={department}
-              onChange={(e) => setDepartment(e.target.value)}
-              className={fieldClass}
-              placeholder="เช่น งานธุรการ / วิชาการ"
-            />
-          </div>
-        </>
+        <div className="mb-4">
+          <label className={labelClass}>ฝ่าย/หน่วยงาน</label>
+          <input value={department || '-'} className={roClass} readOnly />
+        </div>
       )}
 
-      {/* Admin-only note */}
       <div className="mb-4 text-xs text-slate-600 dark:text-slate-300">
-        หมายเหตุ: ฟิลด์ <strong>Role</strong>, การมอบหมาย <strong>Subject/Class</strong> และการจัดการแบน
-        เป็นสิทธิ์ของผู้ดูแลระบบเท่านั้น
+        หมายเหตุ: ฟิลด์อื่น ๆ ทั้งหมดเป็นแบบอ่านอย่างเดียวและแก้ไขได้โดยผู้ดูแลระบบเท่านั้น
       </div>
 
-      <div className="pt-2">
-        <button type="submit" className={saveBtn} disabled={saving}>
-          {saving ? 'Saving…' : 'Save changes'}
+      <div className="pt-2 flex items-center gap-2">
+        <button type="submit" className={saveBtn} disabled={saving || !hasChanges}>
+          {saving ? 'กำลังบันทึก…' : 'บันทึกการเปลี่ยนแปลง'}
         </button>
+        {!hasChanges && (
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            ไม่มีการเปลี่ยนแปลงสำหรับบันทึก
+          </span>
+        )}
       </div>
     </form>
   );
