@@ -18,8 +18,7 @@ export default function SignInForm() {
     'shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ' +
     'dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-400';
 
-  const labelClass =
-    'block text-sm font-medium mb-2 text-gray-800 dark:text-gray-200';
+  const labelClass = 'block text-sm font-medium mb-2 text-gray-800 dark:text-gray-200';
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -35,8 +34,7 @@ export default function SignInForm() {
     if (signInError) {
       setError('Invalid login credentials. Please try again.');
     } else {
-      // ให้ middleware จัดการ redirect ตาม role
-      router.refresh();
+      router.refresh(); // ให้ middleware จัดการ redirect ตาม role
     }
     setLoading(false);
   };
@@ -86,14 +84,16 @@ export default function SignInForm() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={`${fieldClass} pr-10`}
+              className={`${fieldClass} pr-12`} /* เผื่อพื้นที่ไอคอนด้านขวา */
             />
             <button
               type="button"
               aria-label={showPassword ? 'Hide password' : 'Show password'}
               aria-pressed={showPassword}
               onClick={() => setShowPassword((s) => !s)}
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-600 hover:text-gray-800 translate-y-[-6px] dark:text-gray-300 dark:hover:text-gray-100"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md
+                         text-gray-600 hover:text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500
+                         dark:text-gray-300 dark:hover:text-gray-100"
               title={showPassword ? 'Hide password' : 'Show password'}
             >
               {showPassword ? <FiEye size={20} /> : <FiEyeOff size={20} />}
