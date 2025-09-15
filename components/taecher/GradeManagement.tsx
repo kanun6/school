@@ -68,14 +68,14 @@ export default function GradeManagement() {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
 
-  /* -------- Fetch classes once -------- */
+  /* -------- ดึงรายชื่อห้องครั้งแรก -------- */
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch("/api/teacher/grades?getClasses=true", {
           credentials: "include",
         });
-        if (!res.ok) throw new Error("Failed to fetch classes");
+        if (!res.ok) throw new Error("โหลดรายชื่อห้องเรียนไม่สำเร็จ");
         const data: GetClassListResponse = await res.json();
 
         setClasses(data.classes ?? []);
@@ -87,7 +87,7 @@ export default function GradeManagement() {
         }
       } catch (err) {
         const msg =
-          err instanceof Error ? err.message : "An unknown error occurred";
+          err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
         setError(msg);
         await showAlertRef.current({
           title: "เกิดข้อผิดพลาด",
@@ -99,7 +99,7 @@ export default function GradeManagement() {
     })();
   }, []); // ขนาด deps คงที่เสมอ
 
-  /* -------- Fetch students + scheme when class changes -------- */
+  /* -------- ดึงนักเรียน + โครงสร้างคะแนนเมื่อเปลี่ยนห้อง -------- */
   const fetchStudentsAndScheme = useCallback(
     async (classId: string) => {
       setLoading(true);
@@ -112,7 +112,7 @@ export default function GradeManagement() {
           const e = (await res.json().catch(() => null)) as {
             error?: string;
           } | null;
-          throw new Error(e?.error || "Failed to fetch");
+          throw new Error(e?.error || "โหลดข้อมูลไม่สำเร็จ");
         }
         const data: GetClassDataResponse = await res.json();
 
@@ -122,7 +122,7 @@ export default function GradeManagement() {
         setStudents(data.students ?? []);
       } catch (err) {
         const msg =
-          err instanceof Error ? err.message : "An unknown error occurred";
+          err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
         setError(msg);
         await showAlert({
           title: "เกิดข้อผิดพลาด",
@@ -143,7 +143,7 @@ export default function GradeManagement() {
     if (selectedClass) void fetchStudentsAndScheme(selectedClass);
   }, [selectedClass, fetchStudentsAndScheme]);
 
-  /* -------- Component (scheme) editor -------- */
+  /* -------- ตัวแก้ไขโครงสร้างคะแนน (scheme) -------- */
   const addComponent = () => {
     const tempId = `temp-${uuidv4()}`;
     setComponents((prev) => [
@@ -219,7 +219,7 @@ export default function GradeManagement() {
     );
   };
 
-  /* -------- Score editing -------- */
+  /* -------- แก้ไขคะแนน -------- */
   const handleScoreChange = (
     studentId: string,
     compId: string,
@@ -258,7 +258,7 @@ export default function GradeManagement() {
     [students]
   );
 
-  /* -------- Save -------- */
+  /* -------- บันทึก -------- */
   const handleSave = async () => {
     if (!selectedClass) return;
 
@@ -319,14 +319,15 @@ export default function GradeManagement() {
         const j = (await res.json().catch(() => null)) as {
           error?: string;
         } | null;
-        throw new Error(j?.error || "Failed to save");
+        throw new Error(j?.error || "บันทึกคะแนนไม่สำเร็จ");
       }
 
       await showAlert({ title: "สำเร็จ", message: "บันทึกคะแนนเรียบร้อยแล้ว" });
       // reload เพื่อดึง component id จริงแทน temp-*
       await fetchStudentsAndScheme(selectedClass);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
+      const msg =
+        err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
       setError(msg);
       await showAlert({ title: "เกิดข้อผิดพลาด", message: msg, type: "alert" });
     } finally {
@@ -334,10 +335,24 @@ export default function GradeManagement() {
     }
   };
 
+  /* ===================== Loading & Error (ตามที่กำหนด) ===================== */
+  if (loading)
+    return (
+      <div className="flex flex-col items-center justify-center h-[80vh] space-y-4 animate-fade-in">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-lg font-medium text-gray-600 dark:text-gray-300 animate-pulse">
+          กำลังโหลดข้อมูล...
+        </p>
+      </div>
+    );
+
+  // ✅ Error State
+  if (error) return <p className="text-red-500">เกิดข้อผิดพลาด: {error}</p>;
+
   /* ===================== UI ===================== */
   return (
     <div>
-      {/* Header */}
+      {/* ส่วนหัว */}
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-3xl font-bold">บันทึกผลการเรียน</h1>
@@ -346,7 +361,7 @@ export default function GradeManagement() {
           <p className="mt-1 text-slate-600 dark:text-slate-300">
             วิชา:{" "}
             <span className="font-semibold text-slate-900 dark:text-slate-100">
-              {subjectName || "Loading..."}
+              {subjectName || "กำลังโหลด..."}
             </span>
           </p>
 
@@ -377,11 +392,7 @@ export default function GradeManagement() {
         </div>
       </div>
 
-      {error && !loading && (
-        <p className="text-red-500 mb-4 text-center">{error}</p>
-      )}
-
-      {/* Scheme Builder */}
+      {/* ตัวกำหนดส่วนคะแนน */}
       <div className="mb-4 bg-white dark:bg-gray-800 shadow-md rounded-lg p-4">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-lg">กำหนดส่วนคะแนน</h2>
@@ -449,7 +460,7 @@ export default function GradeManagement() {
         )}
       </div>
 
-      {/* Scores Table */}
+      {/* ตารางคะแนน */}
       <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-x-auto">
         <table className="min-w-full">
           <thead className="bg-gray-100 dark:bg-gray-700">
@@ -475,16 +486,7 @@ export default function GradeManagement() {
           </thead>
 
           <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
-            {loading ? (
-              <tr>
-                <td
-                  colSpan={2 + components.length}
-                  className="text-center py-4"
-                >
-                  Loading students...
-                </td>
-              </tr>
-            ) : students.length > 0 ? (
+            {students.length > 0 ? (
               students.map((s) => {
                 const over = (s.total ?? 0) > 100;
                 return (
@@ -540,7 +542,7 @@ export default function GradeManagement() {
         </table>
       </div>
 
-      {/* Save */}
+      {/* ปุ่มบันทึก */}
       {students.length > 0 && (
         <div className="mt-6 flex justify-end items-center gap-4">
           {anyOver100 && (

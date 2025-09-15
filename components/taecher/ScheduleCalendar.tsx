@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { DAYS_OF_WEEK, TIME_SLOTS } from '@/lib/constants';
-import ScheduleModal from './ScheduleModal';
-import { Trash2 } from 'lucide-react';
-import { useModal } from '@/contexts/ModalContext';
+import { useState, useEffect } from "react";
+import { DAYS_OF_WEEK, TIME_SLOTS } from "@/lib/constants";
+import ScheduleModal from "./ScheduleModal";
+import { Trash2 } from "lucide-react";
+import { useModal } from "@/contexts/ModalContext";
 
 interface ScheduleSlot {
   id: string;
@@ -34,7 +34,7 @@ export default function ScheduleCalendar() {
     mySchedule: [],
     allSchedules: [],
     allClasses: [],
-    mySubjectName: '',
+    mySubjectName: "",
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,25 +50,28 @@ export default function ScheduleCalendar() {
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/teacher/schedule-data');
+      const res = await fetch("/api/teacher/schedule-data");
       if (!res.ok) {
-        const t = await res.text().catch(() => '');
-        throw new Error(t || 'Failed to fetch schedule data');
+        const t = await res.text().catch(() => "");
+        throw new Error(t || "ดึงข้อมูลตารางสอนไม่สำเร็จ");
       }
       const raw = await res.json();
 
-      // ใส่ default ปลอดภัยทุกฟิลด์
+      // ใส่ค่าเริ่มต้นที่ปลอดภัยให้ทุกฟิลด์
       const safeData: ScheduleData = {
         mySchedule: Array.isArray(raw?.mySchedule) ? raw.mySchedule : [],
         allSchedules: Array.isArray(raw?.allSchedules) ? raw.allSchedules : [],
         allClasses: Array.isArray(raw?.allClasses) ? raw.allClasses : [],
-        mySubjectName: typeof raw?.mySubjectName === 'string' ? raw.mySubjectName : '',
+        mySubjectName:
+          typeof raw?.mySubjectName === "string" ? raw.mySubjectName : "",
       };
 
       setData(safeData);
       setError(null);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      setError(
+        err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ"
+      );
     } finally {
       setLoading(false);
     }
@@ -79,7 +82,7 @@ export default function ScheduleCalendar() {
   }, []);
 
   const handleSlotClick = (day: number, time: string) => {
-    // ใช้ค่า default ที่เราเซ็ตไว้แล้ว (ไม่เป็น undefined แน่นอน)
+    // ใช้ค่าที่เตรียมไว้แล้ว (ไม่เป็น undefined แน่นอน)
     const allSchedules = data.allSchedules;
     const allClasses = data.allClasses;
 
@@ -87,12 +90,12 @@ export default function ScheduleCalendar() {
       .filter(
         (s) =>
           Number(s.day_of_week) === day &&
-          typeof s.start_time === 'string' &&
-          s.start_time.startsWith(time),
+          typeof s.start_time === "string" &&
+          s.start_time.startsWith(time)
       )
       .map((s) => s.class_id);
 
-    // ใช้ Set ให้ lookup เร็วขึ้น
+    // ใช้ Set ให้ค้นหาได้รวดเร็ว
     const bookedSet = new Set(bookedClassIdsInSlot);
     const availableClasses = allClasses.filter((c) => !bookedSet.has(c.id));
 
@@ -104,9 +107,9 @@ export default function ScheduleCalendar() {
     if (!selectedSlot) return;
     setIsSaving(true);
     try {
-      const response = await fetch('/api/teacher/schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/teacher/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           day_of_week: selectedSlot.day,
           start_time: selectedSlot.time,
@@ -115,8 +118,10 @@ export default function ScheduleCalendar() {
       });
 
       if (!response.ok) {
-        const errorData: { error?: string } = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'ไม่สามารถจองคาบสอนได้');
+        const errorData: { error?: string } = await response
+          .json()
+          .catch(() => ({}));
+        throw new Error(errorData.error || "ไม่สามารถจองคาบสอนได้");
       }
 
       await fetchData();
@@ -124,9 +129,10 @@ export default function ScheduleCalendar() {
       setSelectedSlot(null);
     } catch (err: unknown) {
       showAlert({
-        title: 'เกิดข้อผิดพลาด',
-        message: err instanceof Error ? err.message : 'An unknown error occurred',
-        type: 'alert',
+        title: "เกิดข้อผิดพลาด",
+        message:
+          err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ",
+        type: "alert",
       });
     } finally {
       setIsSaving(false);
@@ -135,34 +141,51 @@ export default function ScheduleCalendar() {
 
   const handleDeleteSlot = async (slotId: string) => {
     const confirmed = await showConfirm({
-      title: 'ยืนยันการยกเลิก',
-      message: 'คุณแน่ใจหรือไม่ว่าต้องการยกเลิกคาบสอนนี้?',
-      confirmText: 'ยืนยัน',
+      title: "ยืนยันการยกเลิก",
+      message: "คุณแน่ใจหรือไม่ว่าต้องการยกเลิกคาบสอนนี้?",
+      confirmText: "ยืนยัน",
     });
     if (!confirmed) return;
 
     try {
       const response = await fetch(`/api/teacher/schedule?slotId=${slotId}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
-      if (!response.ok) throw new Error('ไม่สามารถยกเลิกคาบสอนได้');
+      if (!response.ok) throw new Error("ไม่สามารถยกเลิกคาบสอนได้");
       await fetchData();
     } catch (err: unknown) {
       showAlert({
-        title: 'เกิดข้อผิดพลาด',
-        message: err instanceof Error ? err.message : 'An unknown error occurred',
-        type: 'alert',
+        title: "เกิดข้อผิดพลาด",
+        message:
+          err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ",
+        type: "alert",
       });
     }
   };
 
-  if (loading) return <p>Loading schedule...</p>;
-  if (error) return <p className="text-red-500">Error: {error}</p>;
+  if (loading)
+    return (
+      <div className="flex flex-col items-center justify-center h-[80vh] space-y-4 animate-fade-in">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-lg font-medium text-gray-600 dark:text-gray-300 animate-pulse">
+          กำลังโหลดตารางสอน...
+        </p>
+      </div>
+    );
+
+  if (error) return <p className="text-red-500">ข้อผิดพลาด: {error}</p>;
 
   const mySchedule = data.mySchedule;
 
   return (
     <>
+      <div>
+        <h1 className="text-3xl font-bold">จัดการตารางสอน</h1>
+        <p className="mt-2 text-gray-500 dark:text-gray-400">
+          คลิกที่ช่องว่างในตารางเพื่อเพิ่มคาบสอนสำหรับวิชาของคุณ
+        </p>
+      </div>
+
       {modalOpen && selectedSlot && (
         <ScheduleModal
           availableClasses={selectedSlot.availableClasses}
@@ -193,10 +216,10 @@ export default function ScheduleCalendar() {
               <div
                 key={slot.start}
                 className={`flex items-center justify-center p-2 border-r dark:border-gray-700 ${
-                  !slot.isLunch ? 'border-b dark:border-gray-700' : ''
+                  !slot.isLunch ? "border-b dark:border-gray-700" : ""
                 }`}
               >
-                {slot.isLunch ? '' : `${slot.start} - ${slot.end}`}
+                {slot.isLunch ? "" : `${slot.start} - ${slot.end}`}
               </div>
             ))}
           </div>
@@ -221,8 +244,8 @@ export default function ScheduleCalendar() {
                 const myScheduledSlot = mySchedule.find(
                   (s) =>
                     Number(s.day_of_week) === day.id &&
-                    typeof s.start_time === 'string' &&
-                    s.start_time.startsWith(slot.start),
+                    typeof s.start_time === "string" &&
+                    s.start_time.startsWith(slot.start)
                 );
 
                 return (
@@ -232,12 +255,14 @@ export default function ScheduleCalendar() {
                   >
                     {myScheduledSlot ? (
                       <div className="p-2 rounded-md h-full flex flex-col justify-center bg-green-200 dark:bg-green-800">
-                        <p className="font-bold">{myScheduledSlot.subject_name}</p>
+                        <p className="font-bold">
+                          {myScheduledSlot.subject_name}
+                        </p>
                         <p>{myScheduledSlot.class_name}</p>
                         <button
                           onClick={() => handleDeleteSlot(myScheduledSlot.id)}
                           className="absolute top-1 right-1 p-1 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 hover:bg-red-700 transition-all duration-200"
-                          aria-label="Delete schedule slot"
+                          aria-label="ลบคาบสอน"
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>

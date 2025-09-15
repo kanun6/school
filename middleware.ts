@@ -5,7 +5,6 @@ import { Role } from './lib/types';
 export async function middleware(request: NextRequest) {
   const { supabase, response } = createSupabaseMiddlewareClient(request);
 
-  // ✅ ใช้ getSession() ใน middleware (เร็ว, ไม่ error refresh token)
   const { data: { session } } = await supabase.auth.getSession();
   const user = session?.user;
 
@@ -16,12 +15,12 @@ export async function middleware(request: NextRequest) {
   ];
   const isPublicRoute = publicRoutes.includes(pathname);
 
-  // ถ้าไม่ login และพยายามเข้า protected route → redirect ไป signin
+  // ไม่ login และพยายามเข้า protected → redirect ไป signin
   if (!user && !isPublicRoute) {
     return NextResponse.redirect(new URL('/signin', request.url));
   }
 
-  // ถ้า login แล้ว → ตรวจ role จาก profiles
+  // ถ้า login แล้ว → ตรวจ role
   if (user) {
     const { data: profile } = await supabase
       .from('profiles')
@@ -32,14 +31,19 @@ export async function middleware(request: NextRequest) {
     if (!profile) return response;
 
     const userRole = profile.role;
-    const roleHomePage = `/${userRole}`;
 
-    // ถ้า login แล้ว แต่เข้า /signin หรือ /signup → redirect ไป home ของ role
+    // กำหนดหน้าแรกตาม role
+    let roleHomePage = `/${userRole}`;
+    if (userRole === 'admin') {
+      roleHomePage = '/admin/dashboard';
+    }
+
+    // ถ้า login แล้วแต่เข้า /signin หรือ /signup → redirect ไป home ของ role
     if (pathname === '/signin' || pathname === '/signup') {
       return NextResponse.redirect(new URL(roleHomePage, request.url));
     }
 
-    // ถ้าพยายามเข้า role อื่นที่ไม่ตรงกับตัวเอง → redirect กลับ
+    // ป้องกันเข้า role อื่นที่ไม่ใช่ของตัวเอง
     if (pathname.startsWith('/admin') && userRole !== 'admin') {
       return NextResponse.redirect(new URL(roleHomePage, request.url));
     }

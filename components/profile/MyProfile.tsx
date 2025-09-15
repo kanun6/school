@@ -187,13 +187,15 @@ export default function MyProfile() {
     }
   }
 
-  if (loading) {
+  if (loading)
     return (
-      <p className="text-sm text-slate-600 dark:text-slate-300">
-        กำลังโหลดโปรไฟล์…
-      </p>
+      <div className="flex flex-col items-center justify-center h-[80vh] space-y-4 animate-fade-in">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-lg font-medium text-gray-600 dark:text-gray-300 animate-pulse">
+          กำลังโหลดโปรไฟล์...
+        </p>
+      </div>
     );
-  }
   if (error) {
     return (
       <p className="text-sm text-red-600 dark:text-red-400">

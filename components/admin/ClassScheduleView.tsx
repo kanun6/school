@@ -23,7 +23,7 @@ export default function ClassScheduleView() {
       try {
         setLoading(true);
         const res = await fetch("/api/classes");
-        if (!res.ok) throw new Error("Failed to fetch classes");
+        if (!res.ok) throw new Error("ไม่สามารถดึงข้อมูลห้องเรียนได้");
         const data = await res.json();
         setAllClasses(data);
         if (data.length > 0) {
@@ -33,7 +33,7 @@ export default function ClassScheduleView() {
         if (err instanceof Error) {
           setError(err.message);
         } else {
-          setError("An unknown error occurred");
+          setError("เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ");
         }
       } finally {
         setLoading(false);
@@ -48,20 +48,16 @@ export default function ClassScheduleView() {
     const fetchSchedule = async () => {
       try {
         setLoading(true);
-        const res = await fetch(
-          `/api/admin/schedules?classId=${selectedClass}`
-        );
+        const res = await fetch(`/api/admin/schedules?classId=${selectedClass}`);
         if (!res.ok)
-          throw new Error(
-            `Failed to fetch schedule for class ${selectedClass}`
-          );
+          throw new Error(`ไม่สามารถดึงตารางเรียนของห้อง ${selectedClass} ได้`);
         const data = await res.json();
         setSchedule(data.schedule || []);
       } catch (err: unknown) {
         if (err instanceof Error) {
           setError(err.message);
         } else {
-          setError("An unknown error occurred");
+          setError("เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ");
         }
         setSchedule([]);
       } finally {
@@ -71,8 +67,24 @@ export default function ClassScheduleView() {
     fetchSchedule();
   }, [selectedClass]);
 
+  // ✅ Loading State
+  if (loading)
+    return (
+      <div className="flex flex-col items-center justify-center h-[80vh] space-y-4 animate-fade-in">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-lg font-medium text-gray-600 dark:text-gray-300 animate-pulse">
+          กำลังโหลดตารางเรียน...
+        </p>
+      </div>
+    );
+
+  // ✅ Error State
+  if (error) return <p className="text-red-500">เกิดข้อผิดพลาด: {error}</p>;
+
   return (
     <div>
+      <h1 className="text-3xl font-bold mb-6">ตารางเรียนตามห้อง</h1>
+      {/* เลือกห้อง */}
       <div className="mb-4">
         <label
           htmlFor="class-select"
@@ -80,18 +92,17 @@ export default function ClassScheduleView() {
         >
           เลือกห้องเรียน:
         </label>
-
         <select
           id="class-select"
           value={selectedClass}
           onChange={(e) => setSelectedClass(e.target.value)}
           className="
-      w-full max-w-xs rounded-md
-      border border-slate-300 bg-white text-slate-900 shadow-sm
-      focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-      dark:bg-slate-800 dark:text-slate-100 dark:border-slate-600
-      disabled:bg-slate-100 dark:disabled:bg-slate-800/60 disabled:text-slate-400
-    "
+            w-full max-w-xs rounded-md
+            border border-slate-300 bg-white text-slate-900 shadow-sm
+            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+            dark:bg-slate-800 dark:text-slate-100 dark:border-slate-600
+            disabled:bg-slate-100 dark:disabled:bg-slate-800/60 disabled:text-slate-400
+          "
         >
           {allClasses.map((c) => (
             <option key={c.id} value={c.id}>
@@ -101,81 +112,77 @@ export default function ClassScheduleView() {
         </select>
       </div>
 
-      {loading && <p>Loading schedule...</p>}
-      {error && <p className="text-red-500">Error: {error}</p>}
-
-      {!loading && (
-        <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
-          <div className="grid grid-cols-6">
-            <div className="p-4 border-b border-r dark:border-gray-700"></div>
-            {DAYS_OF_WEEK.map((day) => (
+      {/* ตาราง */}
+      <div className="bg-white dark:bg-gray-800 shadow-lg rounded-lg overflow-hidden">
+        <div className="grid grid-cols-6">
+          <div className="p-4 border-b border-r dark:border-gray-700"></div>
+          {DAYS_OF_WEEK.map((day) => (
+            <div
+              key={day.id}
+              className="text-center font-bold p-4 border-b dark:border-gray-700"
+            >
+              {day.name}
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-6 h-full">
+          {/* เวลา */}
+          <div className="grid grid-rows-7">
+            {TIME_SLOTS.map((slot) => (
               <div
-                key={day.id}
-                className="text-center font-bold p-4 border-b dark:border-gray-700"
+                key={slot.start}
+                className={`flex items-center justify-center p-2 border-r dark:border-gray-700 ${
+                  !slot.isLunch ? "border-b dark:border-gray-700" : ""
+                }`}
               >
-                {day.name}
+                {slot.isLunch ? "" : `${slot.start} - ${slot.end}`}
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-6 h-full">
-            <div className="grid grid-rows-7">
-              {TIME_SLOTS.map((slot) => (
-                <div
-                  key={slot.start}
-                  className={`flex items-center justify-center p-2 border-r dark:border-gray-700 ${
-                    !slot.isLunch ? "border-b dark:border-gray-700" : ""
-                  }`}
-                >
-                  {slot.isLunch ? "" : `${slot.start} - ${slot.end}`}
-                </div>
-              ))}
-            </div>
-            {DAYS_OF_WEEK.map((day) => (
-              <div
-                key={day.id}
-                className="grid grid-rows-7 border-l dark:border-gray-700"
-              >
-                {TIME_SLOTS.map((slot) => {
-                  if (slot.isLunch) {
-                    return (
-                      <div
-                        key={slot.start}
-                        className="bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-sm"
-                      >
-                        พักกลางวัน
-                      </div>
-                    );
-                  }
-                  const scheduledSlot = schedule.find(
-                    (s) =>
-                      s.day_of_week === day.id &&
-                      s.start_time.startsWith(slot.start)
-                  );
+          {/* ตารางเรียนรายวัน */}
+          {DAYS_OF_WEEK.map((day) => (
+            <div
+              key={day.id}
+              className="grid grid-rows-7 border-l dark:border-gray-700"
+            >
+              {TIME_SLOTS.map((slot) => {
+                if (slot.isLunch) {
                   return (
                     <div
                       key={slot.start}
-                      className="border-b border-l dark:border-gray-700 p-2 text-center text-xs"
+                      className="bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-sm"
                     >
-                      {scheduledSlot ? (
-                        <div className="p-2 rounded-md h-full flex flex-col justify-center bg-blue-100 dark:bg-blue-900">
-                          <p className="font-bold">
-                            {scheduledSlot.subject_name}
-                          </p>
-                          <p className="text-gray-600 dark:text-gray-400">
-                            {scheduledSlot.teacher_name}
-                          </p>
-                        </div>
-                      ) : (
-                        <div>-</div>
-                      )}
+                      พักกลางวัน
                     </div>
                   );
-                })}
-              </div>
-            ))}
-          </div>
+                }
+                const scheduledSlot = schedule.find(
+                  (s) =>
+                    s.day_of_week === day.id &&
+                    s.start_time.startsWith(slot.start)
+                );
+                return (
+                  <div
+                    key={slot.start}
+                    className="border-b border-l dark:border-gray-700 p-2 text-center text-xs"
+                  >
+                    {scheduledSlot ? (
+                      <div className="p-2 rounded-md h-full flex flex-col justify-center bg-blue-100 dark:bg-blue-900">
+                        <p className="font-bold">{scheduledSlot.subject_name}</p>
+                        <p className="text-gray-600 dark:text-gray-400">
+                          {scheduledSlot.teacher_name}
+                        </p>
+                      </div>
+                    ) : (
+                      <div>-</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }

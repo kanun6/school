@@ -40,7 +40,7 @@ export default function UserMenu({
   };
 
   const dashboardHref =
-    role === 'teacher' ? '/teacher' : role === 'student' ? '/student' : '/admin';
+    role === 'teacher' ? '/teacher' : role === 'student' ? '/student' : '/admin/dashboard';
 
   return (
     <div className="relative" ref={menuRef}>

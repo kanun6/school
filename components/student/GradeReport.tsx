@@ -1,6 +1,7 @@
+// components/student/GradeReport.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 
 interface ComponentItem {
   id: string;
@@ -29,8 +30,8 @@ export default function GradeReport() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // ใช้ Set เก็บ index ของวิชาที่เปิดอยู่
-  const [openSet, setOpenSet] = useState<Set<number>>(new Set());
+  // ✅ ใช้ Set เก็บ subject_id ของวิชาที่เปิดอยู่ (เสถียรกว่า index)
+  const [openSet, setOpenSet] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const fetchGradeReport = async () => {
@@ -60,20 +61,25 @@ export default function GradeReport() {
     fetchGradeReport();
   }, []);
 
-  // toggle การเปิด/ปิดทีละวิชา
-  const toggleRow = (idx: number) => {
+  // ✅ toggle การเปิด/ปิดโดยอิง subject_id
+  const toggleRow = (subjectId: string) => {
     setOpenSet((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(idx)) {
-        newSet.delete(idx);
-      } else {
-        newSet.add(idx);
-      }
-      return newSet;
+      const next = new Set(prev);
+      if (next.has(subjectId)) next.delete(subjectId);
+      else next.add(subjectId);
+      return next;
     });
   };
 
-  if (loading) return <p className="text-center">กำลังโหลดข้อมูลผลการเรียน...</p>;
+  if (loading)
+    return (
+      <div className="flex flex-col items-center justify-center h-[80vh] space-y-4 animate-fade-in">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-lg font-medium text-gray-600 dark:text-gray-300 animate-pulse">
+          กำลังโหลดข้อมูลผลการเรียน...
+        </p>
+      </div>
+    );
   if (error) return <p className="text-center text-red-500 font-semibold">{error}</p>;
   if (!reportData) return <p className="text-center">ไม่พบข้อมูลผลการเรียน</p>;
 
@@ -104,11 +110,12 @@ export default function GradeReport() {
           </thead>
 
           <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
-            {reportData.grades.map((item, idx) => {
-              const isOpen = openSet.has(idx);
+            {reportData.grades.map((item) => {
+              const isOpen = openSet.has(item.subject_id);
               return (
-                <>
-                  <tr key={item.subject_id}>
+                // ✅ ใส่ key ให้ Fragment (ตัวห่อระดับบนสุดของลูป)
+                <Fragment key={item.subject_id}>
+                  <tr>
                     <td className="px-6 py-4 whitespace-nowrap font-medium">
                       {item.subject_name}
                     </td>
@@ -120,7 +127,7 @@ export default function GradeReport() {
                     </td>
                     <td className="px-6 py-4 text-center">
                       <button
-                        onClick={() => toggleRow(idx)}
+                        onClick={() => toggleRow(item.subject_id)}
                         className="text-sm px-3 py-1 rounded bg-gray-200 dark:bg-gray-700 hover:opacity-90"
                       >
                         {isOpen ? 'ซ่อน' : 'ดูรายละเอียด'}
@@ -162,7 +169,7 @@ export default function GradeReport() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </tbody>
