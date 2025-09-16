@@ -1,3 +1,4 @@
+// components/admin/UserManagement.tsx
 "use client";
 
 import { useEffect, useMemo, useState, ReactNode, ChangeEvent } from "react";
@@ -33,11 +34,47 @@ type UpdateUserPayload = Partial<{
   ban_duration: BanDuration;
 }>;
 
-type UpdateUserFn = (userId: string, updates: UpdateUserPayload) => Promise<void>;
-type BanUserFn = (userId: string, userEmail?: string) => Promise<void>;
-type UnbanUserFn = (userId: string, userEmail?: string) => Promise<void>;
+type ActionVariant = "success" | "error";
+interface ActionResult {
+  ok: boolean;
+  message: string;
+  variant?: ActionVariant;
+}
 
-/* ---- เผื่ออ่านฟิลด์เสริมจาก DB ---- */
+type UpdateUserFn = (
+  userId: string,
+  updates: UpdateUserPayload
+) => Promise<ActionResult>;
+type BanUserFn = (userId: string, userEmail?: string) => Promise<ActionResult>;
+type UnbanUserFn = (
+  userId: string,
+  userEmail?: string
+) => Promise<ActionResult>;
+type DeleteUserFn = (
+  userId: string,
+  userEmail: string
+) => Promise<ActionResult>;
+
+/* ---- type ของ useModal เพื่อเลี่ยง any ---- */
+type ShowAlertOptions = {
+  title: string;
+  message: string;
+  type?: "alert" | "info" | "success" | "error";
+  /** ให้เด้งทับทุก modal */
+  zIndex?: number;
+};
+type ShowConfirmOptions = {
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+};
+interface ModalApi {
+  showAlert: (opts: ShowAlertOptions) => Promise<void>;
+  showConfirm: (opts: ShowConfirmOptions) => Promise<boolean>;
+}
+
+/* ---- ฟิลด์เสริมจาก DB ---- */
 type ManagedUserEx = ManagedUser & {
   profile_image_url?: string | null;
   bio?: string | null;
@@ -89,20 +126,22 @@ function SideSheet(props: {
 
   return (
     <>
+      {/* overlay ของ sheet (ต่ำกว่า alert) */}
       <div
-        className={`fixed inset-0 z-[60] transition-opacity ${
+        className={`fixed inset-0 z-[30] transition-opacity ${
           open ? "opacity-100" : "opacity-0 pointer-events-none"
         } bg-black/40`}
         onClick={onClose}
         aria-hidden="true"
       />
       <aside
-        className={`fixed right-0 top-0 h-full z-[61] transform transition-transform duration-300 ease-out
-          bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100
-          border-l border-slate-200 dark:border-slate-700 shadow-xl
-          ${open ? "translate-x-0" : "translate-x-full"}`}
+        className={`fixed right-0 top-0 h-full z-[40] transform transition-transform duration-300 ease-out
+    bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100
+    border-l border-slate-200 dark:border-slate-700 shadow-xl
+    ${open ? "translate-x-0" : "translate-x-full"}`}
         style={{ width }}
         role="dialog"
+        data-sheet="true"
         aria-labelledby="sheet-title"
         aria-describedby="sheet-content"
       >
@@ -118,7 +157,10 @@ function SideSheet(props: {
             <X size={18} />
           </button>
         </div>
-        <div id="sheet-content" className="h-[calc(100%-56px)] overflow-auto p-4">
+        <div
+          id="sheet-content"
+          className="h-[calc(100%-56px)] overflow-auto p-4"
+        >
           {children}
         </div>
       </aside>
@@ -135,7 +177,7 @@ function SettingsSheet(props: {
   onSave: UpdateUserFn;
   onBan: BanUserFn;
   onUnban: UnbanUserFn;
-  onDelete: (userId: string, userEmail: string) => Promise<void>;
+  onDelete: DeleteUserFn;
   updating: string | null;
   open: boolean;
 }) {
@@ -152,8 +194,11 @@ function SettingsSheet(props: {
     open,
   } = props;
 
+  const { showAlert, showConfirm } = useModal() as unknown as ModalApi;
+
   const [editing, setEditing] = useState<boolean>(false);
-  const isBusy = updating === user.id;
+  const [saving, setSaving] = useState<boolean>(false); // overlay ขณะดำเนินการ
+  const isBusy = updating === user.id || saving;
 
   // basic
   const [firstName, setFirstName] = useState<string>(user.first_name);
@@ -175,6 +220,7 @@ function SettingsSheet(props: {
 
   useEffect(() => {
     setEditing(false);
+    setSaving(false);
   }, [user.id]);
 
   const handleChangeRole = (newRole: RoleUnion) => {
@@ -186,7 +232,7 @@ function SettingsSheet(props: {
     }
   };
 
-  const save = async () => {
+  const buildUpdates = (): UpdateUserPayload => {
     const updates: UpdateUserPayload = {
       first_name: firstName.trim(),
       last_name: lastName.trim(),
@@ -199,17 +245,39 @@ function SettingsSheet(props: {
       student_id: studentId || null,
       bio: bio || null,
     };
-
     if (role === "teacher") {
       updates.subject_id = subjectId || null;
       updates.class_id = null;
-    } else if (role === "student") {
+    } else {
       updates.class_id = classId || null;
       updates.subject_id = null;
     }
+    return updates;
+  };
 
-    onClose();
-    await onSave(user.id, updates);
+  // รัน action พร้อม overlay แล้วค่อยเด้ง alert (ไม่ปิด sheet)
+  const runWithOverlay = async (fn: () => Promise<ActionResult>) => {
+    setSaving(true);
+    const result = await fn().catch<ActionResult>(() => ({
+      ok: false,
+      message: "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ",
+      variant: "error",
+    }));
+    setSaving(false);
+
+    await showAlert({
+      title: result.ok ? "สำเร็จ" : "เกิดข้อผิดพลาด",
+      message: result.message,
+      type: result.ok ? "success" : "alert",
+      zIndex: 10050, // เด้งทับ sheet
+    });
+
+    // ไม่ปิด sheet — ให้อยู่หน้าจัดการเดิม
+  };
+
+  const save = async () => {
+    const updates = buildUpdates();
+    await runWithOverlay(() => onSave(user.id, updates));
   };
 
   const isBanned =
@@ -228,6 +296,19 @@ function SettingsSheet(props: {
 
   return (
     <SideSheet open={open} onClose={onClose} title="จัดการผู้ใช้">
+      {/* Saving overlay บน sheet */}
+      {saving && (
+        <div className="pointer-events-auto fixed inset-0 z-[905] flex items-center justify-center">
+          <div className="absolute inset-0 bg-white/60 dark:bg-slate-900/60 backdrop-blur-[1px]" />
+          <div className="relative z-[906] flex flex-col items-center gap-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-6 py-5 shadow-lg">
+            <div className="w-8 h-8 border-4 border-slate-400 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-slate-700 dark:text-slate-200">
+              กำลังบันทึกการเปลี่ยนแปลง…
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-4 space-y-1">
         <div className="text-sm text-slate-600 dark:text-slate-300">
@@ -432,20 +513,39 @@ function SettingsSheet(props: {
             type="button"
             onClick={() => setEditing((v) => !v)}
             className={editBtn}
+            disabled={saving}
           >
             {editing ? "หยุดแก้ไข" : "แก้ไข"}
           </button>
 
-          <button onClick={save} disabled={!editing || isBusy} className={saveBtn}>
+          <button
+            onClick={() => void save()}
+            disabled={!editing || isBusy}
+            className={saveBtn}
+          >
             บันทึก
           </button>
 
           {isBanned ? (
             <button
-              onClick={() => {
-                onClose();
-                void onUnban(user.id, user.email);
-              }}
+              onClick={() =>
+                runWithOverlay(async () => {
+                  const ok = await showConfirm({
+                    title: "ยืนยันการยกเลิกแบน",
+                    message: `ต้องการยกเลิกการแบนผู้ใช้ ${
+                      user.email ?? ""
+                    } หรือไม่?`,
+                    confirmText: "ยกเลิกแบน",
+                  });
+                  if (!ok)
+                    return {
+                      ok: false,
+                      message: "ยกเลิกการทำรายการ",
+                      variant: "error",
+                    };
+                  return onUnban(user.id, user.email);
+                })
+              }
               disabled={isBusy}
               className={warnBtn}
             >
@@ -453,10 +553,24 @@ function SettingsSheet(props: {
             </button>
           ) : (
             <button
-              onClick={() => {
-                onClose();
-                void onBan(user.id, user.email);
-              }}
+              onClick={() =>
+                runWithOverlay(async () => {
+                  const ok = await showConfirm({
+                    title: "ยืนยันการแบน",
+                    message: `ต้องการแบนผู้ใช้ ${
+                      user.email ?? ""
+                    } เป็นเวลา 24 ชั่วโมงหรือไม่?`,
+                    confirmText: "แบน",
+                  });
+                  if (!ok)
+                    return {
+                      ok: false,
+                      message: "ยกเลิกการทำรายการ",
+                      variant: "error",
+                    };
+                  return onBan(user.id, user.email);
+                })
+              }
               disabled={isBusy}
               className={warnBtn}
             >
@@ -465,10 +579,22 @@ function SettingsSheet(props: {
           )}
 
           <button
-            onClick={() => {
-              onClose();
-              void onDelete(user.id, user.email);
-            }}
+            onClick={() =>
+              runWithOverlay(async () => {
+                const ok = await showConfirm({
+                  title: "ยืนยันการลบ",
+                  message: `คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้ ${user.email} แบบถาวร?`,
+                  confirmText: "ลบ",
+                });
+                if (!ok)
+                  return {
+                    ok: false,
+                    message: "ยกเลิกการทำรายการ",
+                    variant: "error",
+                  };
+                return onDelete(user.id, user.email);
+              })
+            }
             disabled={isBusy}
             className={dangerBtn}
           >
@@ -595,8 +721,6 @@ export default function UserManagement() {
   const [activeTab, setActiveTab] = useState<"teacher" | "student">("teacher");
   const [activeClassTab, setActiveClassTab] = useState<StudentClassTab>(ALL);
 
-  const { showConfirm, showAlert } = useModal();
-
   useEffect(() => {
     const fetchData = async (): Promise<void> => {
       try {
@@ -674,11 +798,18 @@ export default function UserManagement() {
 
   // ตั้งค่าแท็บย่อยของนักเรียนครั้งแรก
   useEffect(() => {
-    // ถ้าไม่มีตั้งค่าไว้ ให้เป็น "ทั้งหมด"
     setActiveClassTab(ALL);
   }, [classOrder.length]);
 
   /* -------------------- actions -------------------- */
+  const refreshUsers = async (): Promise<ManagedUser[]> => {
+    const res = await fetch("/api/admin/users");
+    const data: ManagedUser[] = await res.json();
+    const filtered = data.filter((u) => u.role !== "admin");
+    setUsers(filtered);
+    return filtered;
+  };
+
   const handleUpdateUser: UpdateUserFn = async (userId, updates) => {
     setUpdating(userId);
     try {
@@ -689,33 +820,34 @@ export default function UserManagement() {
       });
       if (!response.ok) {
         const errorData: { error?: string } = await response.json();
-        throw new Error(errorData.error || "ไม่สามารถบันทึกได้");
+        return {
+          ok: false,
+          message: errorData.error || "ไม่สามารถบันทึกได้",
+          variant: "error",
+        };
       }
-      // refresh
-      const res = await fetch("/api/admin/users");
-      const data: ManagedUser[] = await res.json();
-      setUsers(data.filter((u) => u.role !== "admin"));
-      await showAlert({
-        title: "สำเร็จ",
+      const list = await refreshUsers();
+      // ถ้า sheet ยังเปิดอยู่ อัปเดตข้อมูลใน sheet ให้เป็นข้อมูลล่าสุด
+      setSettingsUser((prev) =>
+        prev ? list.find((u) => u.id === prev.id) ?? prev : prev
+      );
+      return {
+        ok: true,
         message: "บันทึกข้อมูลผู้ใช้เรียบร้อยแล้ว",
-      });
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
-      await showAlert({ title: "เกิดข้อผิดพลาด", message: msg, type: "alert" });
+        variant: "success",
+      };
+    } catch {
+      return {
+        ok: false,
+        message: "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ",
+        variant: "error",
+      };
     } finally {
       setUpdating(null);
     }
   };
 
   const handleBanUser: BanUserFn = async (userId, userEmail) => {
-    const confirmed = await showConfirm({
-      title: "ยืนยันการแบน",
-      message: `ต้องการแบนผู้ใช้ ${userEmail ?? ""} เป็นเวลา 24 ชั่วโมงหรือไม่?`,
-      confirmText: "แบน",
-    });
-    if (!confirmed) return;
-
     setUpdating(userId);
     try {
       const response = await fetch("/api/admin/users", {
@@ -726,33 +858,30 @@ export default function UserManagement() {
           updates: { ban_duration: "24h" as BanDuration },
         }),
       });
-      if (!response.ok) throw new Error("แบนไม่สำเร็จ");
+      if (!response.ok)
+        return { ok: false, message: "แบนไม่สำเร็จ", variant: "error" };
 
-      const res = await fetch("/api/admin/users");
-      const data: ManagedUser[] = await res.json();
-      setUsers(data.filter((u) => u.role !== "admin"));
-
-      await showAlert({
-        title: "สำเร็จ",
+      const list = await refreshUsers();
+      setSettingsUser((prev) =>
+        prev ? list.find((u) => u.id === prev.id) ?? prev : prev
+      );
+      return {
+        ok: true,
         message: `${userEmail ?? "ผู้ใช้"} ถูกแบนแล้ว (24 ชั่วโมง)`,
-      });
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
-      await showAlert({ title: "เกิดข้อผิดพลาด", message: msg, type: "alert" });
+        variant: "success",
+      };
+    } catch {
+      return {
+        ok: false,
+        message: "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ",
+        variant: "error",
+      };
     } finally {
       setUpdating(null);
     }
   };
 
   const handleUnbanUser: UnbanUserFn = async (userId, userEmail) => {
-    const confirmed = await showConfirm({
-      title: "ยืนยันการยกเลิกแบน",
-      message: `ต้องการยกเลิกการแบนผู้ใช้ ${userEmail ?? ""} หรือไม่?`,
-      confirmText: "ยกเลิกแบน",
-    });
-    if (!confirmed) return;
-
     setUpdating(userId);
     try {
       const response = await fetch("/api/admin/users", {
@@ -763,33 +892,30 @@ export default function UserManagement() {
           updates: { ban_duration: "none" as BanDuration },
         }),
       });
-      if (!response.ok) throw new Error("ยกเลิกแบนไม่สำเร็จ");
+      if (!response.ok)
+        return { ok: false, message: "ยกเลิกแบนไม่สำเร็จ", variant: "error" };
 
-      const res = await fetch("/api/admin/users");
-      const data: ManagedUser[] = await res.json();
-      setUsers(data.filter((u) => u.role !== "admin"));
-
-      await showAlert({
-        title: "สำเร็จ",
+      const list = await refreshUsers();
+      setSettingsUser((prev) =>
+        prev ? list.find((u) => u.id === prev.id) ?? prev : prev
+      );
+      return {
+        ok: true,
         message: `${userEmail ?? "ผู้ใช้"} ถูกยกเลิกการแบนแล้ว`,
-      });
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
-      await showAlert({ title: "เกิดข้อผิดพลาด", message: msg, type: "alert" });
+        variant: "success",
+      };
+    } catch {
+      return {
+        ok: false,
+        message: "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ",
+        variant: "error",
+      };
     } finally {
       setUpdating(null);
     }
   };
 
-  const handleDeleteUser = async (userId: string, userEmail: string) => {
-    const confirmed = await showConfirm({
-      title: "ยืนยันการลบ",
-      message: `คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้ ${userEmail} แบบถาวร?`,
-      confirmText: "ลบ",
-    });
-    if (!confirmed) return;
-
+  const handleDeleteUser: DeleteUserFn = async (userId, userEmail) => {
     setUpdating(userId);
     try {
       const response = await fetch("/api/admin/users", {
@@ -797,18 +923,22 @@ export default function UserManagement() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId }),
       });
-      if (!response.ok) throw new Error("ลบไม่สำเร็จ");
+      if (!response.ok)
+        return { ok: false, message: "ลบไม่สำเร็จ", variant: "error" };
 
       setUsers((prev) => prev.filter((u) => u.id !== userId));
-      await showAlert({
-        title: "สำเร็จ",
-        message: `ลบผู้ใช้ ${userEmail} เรียบร้อยแล้ว`,
-      });
       setSettingsUser(null);
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
-      await showAlert({ title: "เกิดข้อผิดพลาด", message, type: "alert" });
+      return {
+        ok: true,
+        message: `ลบผู้ใช้ ${userEmail} เรียบร้อยแล้ว`,
+        variant: "success",
+      };
+    } catch {
+      return {
+        ok: false,
+        message: "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ",
+        variant: "error",
+      };
     } finally {
       setUpdating(null);
     }
@@ -816,21 +946,20 @@ export default function UserManagement() {
 
   /* -------------------- render -------------------- */
   if (loading)
-  return (
-    <div className="flex flex-col items-center justify-center h-[80vh] space-y-4 animate-fade-in">
-      {/* Spinner */}
-      <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-      <p className="text-lg font-medium text-gray-600 dark:text-gray-300 animate-pulse">
-        กำลังโหลดข้อมูลผู้ใช้…
-      </p>
-    </div>
-  );
-  if (error) return <p className="text-center mt-4 text-red-500">ข้อผิดพลาด: {error}</p>;
+    return (
+      <div className="flex flex-col items-center justify-center h-[80vh] space-y-4 animate-fade-in">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-lg font-medium text-gray-600 dark:text-gray-300 animate-pulse">
+          กำลังโหลดข้อมูลผู้ใช้…
+        </p>
+      </div>
+    );
+  if (error)
+    return <p className="text-center mt-4 text-red-500">ข้อผิดพลาด: {error}</p>;
 
   // เนื้อหาหน้ารายชื่อนักเรียนตามแท็บห้อง
   const renderStudentTabContent = () => {
     if (activeClassTab === ALL) {
-      // แสดงรวมทุกห้อง
       const all = classOrder.map((cid) => studentsByClass[cid]).flat();
       const unassigned = studentsByClass[UNASSIGNED] ?? [];
       const list = [...all, ...unassigned];
@@ -861,7 +990,19 @@ export default function UserManagement() {
 
   return (
     <>
-    <h1 className="text-3xl font-bold mb-6">จัดการผู้ใช้</h1>
+      {/* Global z-index fix: บังคับ alert modal ให้ทับทุกอย่างในหน้านี้ */}
+      <style jsx global>{`
+        /* ให้ dialog อื่น ๆ (เช่น alert) อยู่เหนือ sheet เสมอ */
+        :where(body) > :where([role="dialog"]):not([data-sheet="true"]) {
+          position: fixed !important;
+          inset: 0 !important;
+          z-index: 10050 !important;
+          pointer-events: auto !important;
+        }
+      `}</style>
+
+      <h1 className="text-3xl font-bold mb-6">จัดการผู้ใช้</h1>
+
       {settingsUser && (
         <SettingsSheet
           open={!!settingsUser}
