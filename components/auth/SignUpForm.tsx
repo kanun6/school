@@ -1,13 +1,17 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { FiEye, FiEyeOff } from "react-icons/fi";
-import AvatarPicker from "../profile/AvatarPicker";
 import AuthShell from "@/components/auth/AuthShell";
 
 type Role = "student" | "teacher";
+
+interface Class {
+  id: string;
+  name: string;
+}
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -32,7 +36,6 @@ export default function SignUpForm() {
   const [role, setRole] = useState<Role>("student");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [bio, setBio] = useState("");
   const [birthday, setBirthday] = useState("");
   const [phone, setPhone] = useState("");
@@ -41,10 +44,29 @@ export default function SignUpForm() {
   const [department, setDepartment] = useState("");
   const [position, setPosition] = useState("");
 
+  // ห้องเรียน
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [classId, setClassId] = useState("");
+
   // ui
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // โหลดห้องเรียนมาแสดง dropdown
+  useEffect(() => {
+    const fetchClasses = async () => {
+      try {
+        const res = await fetch("/api/SignUpClasses");
+        if (!res.ok) throw new Error("โหลดห้องเรียนไม่สำเร็จ");
+        const data: Class[] = await res.json();
+        setClasses(data);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchClasses();
+  }, []);
 
   const fieldClass =
     "w-full rounded-md border border-slate-300 bg-white text-slate-900 placeholder:text-slate-500 " +
@@ -68,12 +90,12 @@ export default function SignUpForm() {
             first_name: firstName,
             last_name: lastName,
             role,
-            profile_image_url: profileImageUrl || null,
             bio: bio || null,
             birthday: birthday || null,
             phone: phone || null,
             address: address || null,
             student_id: role === "student" ? studentId : null,
+            class_id: role === "student" ? classId : null,
             department: department || null,
             position: role === "teacher" ? position : null,
           },
@@ -101,12 +123,12 @@ export default function SignUpForm() {
             first_name: firstName,
             last_name: lastName,
             role,
-            profile_image_url: profileImageUrl,
             bio,
             birthday: birthday || null,
             phone,
             address,
             student_id: role === "student" ? studentId : null,
+            class_id: role === "student" ? classId : null,
             department,
             position: role === "teacher" ? position : null,
           }),
@@ -225,10 +247,6 @@ export default function SignUpForm() {
                 {showPassword ? <FiEye size={20} /> : <FiEyeOff size={20} />}
               </button>
             </div>
-            {/* ตัวช่วยความแข็งแรงรหัสผ่านแบบง่าย */}
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              แนะนำ: อย่างน้อย 8 ตัวอักษร มีตัวเลขและตัวอักษรผสม
-            </p>
           </div>
         </div>
 
@@ -258,30 +276,6 @@ export default function SignUpForm() {
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
               className={fieldClass}
-            />
-          </div>
-        </div>
-
-        {/* รูปโปรไฟล์ + แนะนำตัว */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className={labelClass}>รูปโปรไฟล์</label>
-            <AvatarPicker
-              value={profileImageUrl}
-              onChange={setProfileImageUrl}
-            />
-          </div>
-          <div>
-            <label htmlFor="bio" className={labelClass}>
-              แนะนำตัว
-            </label>
-            <textarea
-              id="bio"
-              rows={4}
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              className={`${fieldClass} min-h-[116px]`}
-              placeholder="เล่าเกี่ยวกับตัวคุณสั้นๆ"
             />
           </div>
         </div>
@@ -337,26 +331,51 @@ export default function SignUpForm() {
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             className={fieldClass}
-            placeholder="บ้านเลขที่ ถนน ตำบล/แขวง อำเภอ/เขต จังหวัด รหัสไปรษณีย์"
           />
         </div>
 
         {/* เงื่อนไขตามบทบาท */}
         {role === "student" && (
-          <div>
-            <label htmlFor="studentId" className={labelClass}>
-              รหัสนักเรียน/นิสิต
-            </label>
-            <input
-              id="studentId"
-              type="text"
-              required
-              value={studentId}
-              onChange={(e) => setStudentId(e.target.value)}
-              className={fieldClass}
-            />
-          </div>
+          <>
+            <div>
+              <label htmlFor="studentId" className={labelClass}>
+                รหัสนักเรียน/นิสิต
+              </label>
+              <input
+                id="studentId"
+                type="text"
+                required
+                value={studentId}
+                onChange={(e) => setStudentId(e.target.value)}
+                className={fieldClass}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="classId" className={labelClass}>
+                เลือกห้องเรียน
+              </label>
+              <select
+                id="classId"
+                required
+                value={classId}
+                onChange={(e) => setClassId(e.target.value)}
+                className={fieldClass}
+              >
+                <option value="">— เลือกห้องเรียน —</option>
+                {classes
+                  .slice()
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          </>
         )}
+
         {role === "teacher" && (
           <div>
             <label htmlFor="position" className={labelClass}>
@@ -373,7 +392,7 @@ export default function SignUpForm() {
           </div>
         )}
 
-        {/* ข้อตกลงการใช้งาน */}
+        {/* ข้อตกลง */}
         <label className="inline-flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
           <input
             required
@@ -395,15 +414,12 @@ export default function SignUpForm() {
         </button>
       </form>
 
-      {/* footer */}
-      {
-        <div className="text-center text-xs text-slate-600 dark:text-slate-300 mt-4">
-          มีบัญชีอยู่แล้ว?{" "}
-          <a href="/signin" className="text-indigo-600 hover:underline">
-            เข้าสู่ระบบ
-          </a>
-        </div>
-      }
+      <div className="text-center text-xs text-slate-600 dark:text-slate-300 mt-4">
+        มีบัญชีอยู่แล้ว?{" "}
+        <a href="/signin" className="text-indigo-600 hover:underline">
+          เข้าสู่ระบบ
+        </a>
+      </div>
     </AuthShell>
   );
 }

@@ -138,7 +138,7 @@ export default function UserMenu({
             role="menuitem"
           >
             <LogOut className="h-5 w-5 text-red-600 group-hover:scale-110 transition-transform" />
-            <span className="font-medium text-red-700 dark:text-red-300">Sign Out</span>
+            <span className="font-medium text-red-700 dark:text-red-300">ออกจากระบบ</span>
           </button>
         </div>
       </div>

@@ -30,7 +30,7 @@ export async function GET() {
     stats[className] = (stats[className] || 0) + 1;
   });
 
-  // ✅ sort className เช่น "ม.1/1", "ม.1/2", ..., "ม.3/3"
+  // sort className เช่น "ม.1/1", "ม.1/2", ..., "ม.3/3"
   const result = Object.entries(stats)
     .map(([name, count]) => ({
       className: name,

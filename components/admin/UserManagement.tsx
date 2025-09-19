@@ -651,7 +651,7 @@ function UserTable(props: {
           </tr>
         </thead>
         <tbody>
-          {users.map((user) => {
+          {users.map((user, index) => {
             const isBanned =
               !!user.banned_until && new Date(user.banned_until) > new Date();
             const busy = updating === user.id;
@@ -667,7 +667,7 @@ function UserTable(props: {
 
             return (
               <tr
-                key={user.id}
+                key={`${user.id}-${index}`}
                 className="bg-white dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/80"
               >
                 <td className="py-3 px-6 font-medium text-slate-900 dark:text-slate-100 whitespace-nowrap">
@@ -786,7 +786,6 @@ export default function UserManagement() {
         (nameMap[a as string] || "").localeCompare(nameMap[b as string] || "")
       ) as ClassKey[];
 
-    if (byClass[UNASSIGNED]?.length) order.push(UNASSIGNED);
 
     const map: Record<ClassKey, string> = {
       [UNASSIGNED]: "ยังไม่กำหนดห้อง",
