@@ -63,7 +63,7 @@ export default function SignInForm() {
 
     const user = data.user;
     if (user && user.email) {
-      // ✅ ใช้ตัวช่วยแทน any
+      // ใช้ตัวช่วยแทน any
       const meta = pickUserMeta(user.user_metadata);
       const name =
         `${meta.first_name ?? ""} ${meta.last_name ?? ""}`.trim() || user.email;
