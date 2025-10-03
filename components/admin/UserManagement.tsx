@@ -526,7 +526,7 @@ function SettingsSheet(props: {
             บันทึก
           </button>
 
-          {isBanned ? (
+          {/* {isBanned ? (
             <button
               onClick={() =>
                 runWithOverlay(async () => {
@@ -576,7 +576,7 @@ function SettingsSheet(props: {
             >
               แบน (24 ชม.)
             </button>
-          )}
+          )} */}
 
           <button
             onClick={() =>

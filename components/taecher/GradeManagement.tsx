@@ -632,7 +632,7 @@ export default function GradeManagement(): JSX.Element {
                           disabled:bg-gray-400 flex items-center gap-1
                         "
                       >
-                        <span aria-hidden="true">ลบ</span>
+                        <span aria-hidden="true">ลบช่องนี้</span>
                       </button>
                       {/* --------------------------- */}
                     </td>
